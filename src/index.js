@@ -1,4 +1,10 @@
-const { Client, GatewayIntentBits, Collection, Events } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  Collection,
+  Events,
+  Partials,
+} = require("discord.js");
 const config = require("../config");
 const summarizeCommand = require("./commands/SummarizeCommand");
 const adminCommand = require("./commands/AdminCommand");
@@ -10,6 +16,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.DirectMessages,
   ],
+  partials: [Partials.Channel, Partials.Message], // Required for DMs
 });
 
 client.commands = new Collection();

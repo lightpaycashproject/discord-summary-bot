@@ -28,20 +28,23 @@ module.exports = {
       let allMessages = [];
       let lastId = null;
 
-      // 1. Fetch messages from last 24 hours (with limit safety)
+      // 1. Fetch messages from last 24 hours (Infinite loop safety: max 10,000 messages)
       while (true) {
-        const options = { limit: 100 };
-        if (lastId) options.before = lastId;
+        const fetchOptions = { limit: 100 };
+        if (lastId) fetchOptions.before = lastId;
 
-        const fetched = await channel.messages.fetch(options);
+        const fetched = await channel.messages.fetch(fetchOptions);
         if (fetched.size === 0) break;
 
         const filtered = Array.from(fetched.values());
         allMessages.push(...filtered);
 
         lastId = filtered[filtered.length - 1].id;
+
+        // Stop if we've gone past the 24-hour mark
         if (filtered[filtered.length - 1].createdTimestamp < startTime) break;
-        if (allMessages.length > 1000) break;
+        // Safety break for extremely active channels
+        if (allMessages.length > 10000) break;
       }
 
       const processedMessages = allMessages
@@ -158,13 +161,13 @@ module.exports = {
       );
 
       summarizerService.saveSummary(
-      channel.id,
-      lastMessageId,
-      summary,
-      interaction.guildId,
-      interaction.user.id,
-      summary.split(/\s+/).length, // Estimated tokens
-    );
+        channel.id,
+        lastMessageId,
+        summary,
+        interaction.guildId,
+        interaction.user.id,
+        summary.split(/\s+/).length, // Estimated tokens
+      );
       await dmMessage.edit(
         `**Conversation Summary for #${channel.name} (Last 24h)**\n\n${summary}`,
       );

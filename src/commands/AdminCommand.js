@@ -30,53 +30,58 @@ module.exports = {
 
     if (subcommand === "clear-cache") {
       try {
-        // We'll need a method in DatabaseService to clear specific channel cache
-        // For now, let's just implement the logic or call a DB method.
-        // I'll add 'clearChannelCache' to DatabaseService.
         db.clearChannelCache(interaction.channelId);
         await interaction.reply({
           content: `✅ Cache cleared for channel <#${interaction.channelId}>.`,
           ephemeral: true,
         });
       } catch (error) {
-        console.error("Admin clear-cache error:", error);
+        console.error("Admin clear-cache error:", error.message);
         await interaction.reply({
           content: "Failed to clear cache.",
           ephemeral: true,
         });
       }
     } else if (subcommand === "stats") {
-      const stats = db.getDetailedStats();
+      try {
+        const stats = db.getDetailedStats();
 
-      let statsMsg = "**📊 Bot Analytics**\n\n";
-      statsMsg += `**Total Estimated Tokens Used:** \`${stats.totalTokens}\`\n\n`;
+        let statsMsg = "**📊 Bot Analytics**\n\n";
+        statsMsg += `**Total Estimated Tokens Used:** \`${stats.totalTokens}\`\n\n`;
 
-      statsMsg += "**👑 Top Users (by usage)**\n";
-      if (stats.topUsers.length > 0) {
-        stats.topUsers.forEach((u, i) => {
-          statsMsg += `${i + 1}. <@${u.user_id}>: \`${u.total_tokens}\` tokens (${u.count} reqs)\n`;
-        });
-      } else {
-        statsMsg += "_No usage data yet._\n";
-      }
-
-      statsMsg += "\n**🏰 Top Servers (by usage)**\n";
-      if (stats.topGuilds.length > 0) {
-        for (let i = 0; i < stats.topGuilds.length; i++) {
-          const g = stats.topGuilds[i];
-          const guildName =
-            interaction.client.guilds.cache.get(g.guild_id)?.name ||
-            `ID: ${g.guild_id}`;
-          statsMsg += `${i + 1}. **${guildName}**: \`${g.total_tokens}\` tokens\n`;
+        statsMsg += "**👑 Top Users (by usage)**\n";
+        if (stats.topUsers.length > 0) {
+          stats.topUsers.forEach((u, i) => {
+            statsMsg += `${i + 1}. <@${u.user_id}>: \`${u.total_tokens}\` tokens (${u.count} reqs)\n`;
+          });
+        } else {
+          statsMsg += "_No usage data yet._\n";
         }
-      } else {
-        statsMsg += "_No server data yet._\n";
-      }
 
-      await interaction.reply({
-        content: statsMsg,
-        ephemeral: true,
-      });
+        statsMsg += "\n**🏰 Top Servers (by usage)**\n";
+        if (stats.topGuilds.length > 0) {
+          for (let i = 0; i < stats.topGuilds.length; i++) {
+            const g = stats.topGuilds[i];
+            const guildName =
+              interaction.client.guilds.cache.get(g.guild_id)?.name ||
+              `ID: ${g.guild_id}`;
+            statsMsg += `${i + 1}. **${guildName}**: \`${g.total_tokens}\` tokens\n`;
+          }
+        } else {
+          statsMsg += "_No server data yet._\n";
+        }
+
+        await interaction.reply({
+          content: statsMsg,
+          ephemeral: true,
+        });
+      } catch (error) {
+        console.error("Admin stats error:", error.message);
+        await interaction.reply({
+          content: "Failed to fetch stats.",
+          ephemeral: true,
+        });
+      }
     }
   },
 };

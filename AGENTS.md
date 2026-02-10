@@ -6,6 +6,7 @@ Welcome, fellow agent. This project is a specialized Discord bot for summarizing
 - **Bun-Native**: No Node.js dependencies where a Bun native equivalent exists (e.g., `bun:sqlite` instead of `better-sqlite3`, native `fetch`, `bun test`).
 - **Real-Time Streaming**: Summaries are streamed to user DMs using OpenRouter to provide immediate feedback.
 - **Privacy First**: Summaries are delivered via DM to avoid cluttering public channels and respect conversation context.
+- **Intents & Permissions**: Requires `GuildMessages`, `MessageContent`, and `DirectMessages` intents. `Partials.Channel` and `Partials.Message` are enabled for reliable DM handling.
 
 ## 🏗 Project Structure
 
