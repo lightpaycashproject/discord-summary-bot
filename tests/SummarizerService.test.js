@@ -1,47 +1,31 @@
-// Mock DatabaseService BEFORE everything
-jest.mock("../src/services/DatabaseService", () => {
-  return {
-    getCachedSummary: jest.fn(),
-    saveSummary: jest.fn(),
-    getCachedTweet: jest.fn(),
-    saveTweet: jest.fn(),
-  };
-});
-
-// Mock OpenRouter SDK
-const mockSend = jest.fn();
-jest.mock("@openrouter/sdk", () => {
-  return {
-    OpenRouter: jest.fn().mockImplementation(() => {
-      return { chat: { send: mockSend } };
-    }),
-  };
-});
-
+const { OpenRouter } = require("@openrouter/sdk");
 const SummarizerService = require("../src/services/SummarizerService");
 const db = require("../src/services/DatabaseService");
 
+// Spy on SDK and DB
 describe("SummarizerService with Caching", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it("should call DB for cached summary", () => {
-    db.getCachedSummary.mockReturnValue("Cached summary");
+    const spy = jest.spyOn(db, "getCachedSummary").mockReturnValue("Cached summary");
     const result = SummarizerService.getCachedSummary("chan1", "msg1");
     expect(result).toBe("Cached summary");
+    expect(spy).toHaveBeenCalledWith("chan1", "msg1");
+    spy.mockRestore();
   });
 
   it("should call SDK and return summary (non-streaming)", async () => {
     const mockResponse = {
-      choices: [
-        { message: { content: "<think>Reasoning</think>Final result" } },
-      ],
+      choices: [{ message: { content: "<think>Reasoning</think>Final result" } }],
     };
-    mockSend.mockResolvedValue(mockResponse);
+    const spy = jest.spyOn(SummarizerService.openRouter.chat, "send").mockResolvedValue(mockResponse);
 
     const summary = await SummarizerService.summarize("Chat content");
     expect(summary).toBe("Final result");
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 
   it("should handle streaming summary and filter <think> tags", async () => {
@@ -52,16 +36,15 @@ describe("SummarizerService with Caching", () => {
       yield { choices: [{ delta: { content: "</think>" } }] };
       yield { choices: [{ delta: { content: "End" } }] };
     })();
-    mockSend.mockResolvedValue(mockStream);
+    const spy = jest.spyOn(SummarizerService.openRouter.chat, "send").mockResolvedValue(mockStream);
 
     const updates = [];
-    const summary = await SummarizerService.summarize("content", (t) =>
-      updates.push(t),
-    );
+    const summary = await SummarizerService.summarize("content", (t) => updates.push(t));
 
     expect(summary).toBe("Start End");
     expect(updates).toContain("Start ");
     expect(updates[updates.length - 1]).toBe("Start End");
+    spy.mockRestore();
   });
 
   it("should handle partial <think> tags across chunks", async () => {
@@ -71,20 +54,24 @@ describe("SummarizerService with Caching", () => {
       yield { choices: [{ delta: { content: "ink>hidden</think>" } }] };
       yield { choices: [{ delta: { content: " more" } }] };
     })();
-    mockSend.mockResolvedValue(mockStream);
+    const spy = jest.spyOn(SummarizerService.openRouter.chat, "send").mockResolvedValue(mockStream);
 
     const summary = await SummarizerService.summarize("content", () => {});
     expect(summary).toBe("Text  more");
+    spy.mockRestore();
   });
 
   it("should save summary to DB", () => {
+    const spy = jest.spyOn(db, "saveSummary").mockImplementation(() => {});
     SummarizerService.saveSummary("chan1", "msg1", "text");
-    expect(db.saveSummary).toHaveBeenCalledWith("chan1", "msg1", "text");
+    expect(spy).toHaveBeenCalledWith("chan1", "msg1", "text");
+    spy.mockRestore();
   });
 
   it("should handle API errors", async () => {
-    mockSend.mockRejectedValue(new Error("API Fail"));
+    const spy = jest.spyOn(SummarizerService.openRouter.chat, "send").mockRejectedValue(new Error("API Fail"));
     const summary = await SummarizerService.summarize("content");
     expect(summary).toBe("Failed to generate summary due to an API error.");
+    spy.mockRestore();
   });
 });

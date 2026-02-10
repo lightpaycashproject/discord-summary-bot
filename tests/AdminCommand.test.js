@@ -1,9 +1,4 @@
 const db = require("../src/services/DatabaseService");
-
-// Manual mock for Bun compatibility
-db.clearChannelCache = jest.fn();
-db.getStats = jest.fn();
-
 const AdminCommand = require("../src/commands/AdminCommand");
 const { admin } = require("../config");
 
@@ -35,36 +30,46 @@ describe("AdminCommand", () => {
 
   it("should clear cache for admin", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("clear-cache");
+    const spy = jest.spyOn(db, "clearChannelCache").mockImplementation(() => {});
+    
     await AdminCommand.execute(mockInteraction);
-    expect(db.clearChannelCache).toHaveBeenCalledWith("chan123");
+    
+    expect(spy).toHaveBeenCalledWith("chan123");
     expect(mockInteraction.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining("Cache cleared"),
       }),
     );
+    spy.mockRestore();
   });
 
   it("should show stats for admin", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("stats");
-    db.getStats.mockReturnValue({ tweets: 10, summaries: 5 });
+    const spy = jest.spyOn(db, "getStats").mockReturnValue({ tweets: 10, summaries: 5 });
+    
     await AdminCommand.execute(mockInteraction);
+    
     expect(mockInteraction.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining("Cached Tweets: 10"),
       }),
     );
+    spy.mockRestore();
   });
 
   it("should handle errors in clear-cache", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("clear-cache");
-    db.clearChannelCache.mockImplementation(() => {
+    const spy = jest.spyOn(db, "clearChannelCache").mockImplementation(() => {
       throw new Error("DB error");
     });
+    
     await AdminCommand.execute(mockInteraction);
+    
     expect(mockInteraction.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining("Failed to clear cache"),
       }),
     );
+    spy.mockRestore();
   });
 });
