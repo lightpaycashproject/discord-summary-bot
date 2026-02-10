@@ -20,21 +20,25 @@ A high-performance Discord bot that summarizes conversations in text channels us
 ## Setup
 
 1.  **Clone the repository**:
+
     ```bash
     git clone https://github.com/lightpaycashproject/discord-summary-bot.git
     cd discord-summary-bot
     ```
 
 2.  **Install dependencies**:
+
     ```bash
     bun install
     ```
 
 3.  **Configure Environment**:
     Copy `.env.example` to `.env` and fill in your details:
+
     ```bash
     cp .env.example .env
     ```
+
     - `DISCORD_TOKEN`: Your bot token.
     - `CLIENT_ID`: Your bot's Client ID.
     - `GUILD_ID`: (Optional) The ID of a specific server for instant command registration.
@@ -42,6 +46,7 @@ A high-performance Discord bot that summarizes conversations in text channels us
     - `LLM_API_KEY`: Your OpenRouter API key.
 
 4.  **Deploy Commands**:
+
     ```bash
     bun run deploy
     ```
@@ -54,17 +59,17 @@ A high-performance Discord bot that summarizes conversations in text channels us
 ## Development
 
 - **Run Tests**:
-    ```bash
-    bun test
-    ```
+  ```bash
+  bun test
+  ```
 - **Coverage**:
-    ```bash
-    bun run test:coverage
-    ```
+  ```bash
+  bun run test:coverage
+  ```
 - **Linting**:
-    ```bash
-    bun run lint
-    ```
+  ```bash
+  bun run lint
+  ```
 
 ## Architecture
 

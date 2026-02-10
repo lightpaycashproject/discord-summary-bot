@@ -169,7 +169,9 @@ describe("ScraperService", () => {
         })
         .mockRejectedValueOnce(new Error("fail"));
 
-      const result = await ScraperService.scrapeTweet("https://x.com/u/status/2");
+      const result = await ScraperService.scrapeTweet(
+        "https://x.com/u/status/2",
+      );
       expect(result).toContain("@u: T");
 
       global.fetch = originalFetch;
