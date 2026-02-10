@@ -268,16 +268,6 @@ class DatabaseService {
       .run({ $channelId: channelId });
   }
 
-  getStats() {
-    const tweets = this.db
-      .query("SELECT COUNT(*) as count FROM scraped_data")
-      .get().count;
-    const summaries = this.db
-      .query("SELECT COUNT(*) as count FROM summaries")
-      .get().count;
-    return { tweets, summaries };
-  }
-
   close() {
     this.db.close();
   }
