@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("discord.js");
+const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const db = require("../services/DatabaseService");
 const { admin } = require("../../config");
 
@@ -6,6 +6,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName("admin")
     .setDescription("Admin-only commands")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator) // Hides command from non-admins in UI
     .addSubcommand((subcommand) =>
       subcommand
         .setName("clear-cache")
