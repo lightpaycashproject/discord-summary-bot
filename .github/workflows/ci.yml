@@ -11,35 +11,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
+      - uses: actions/checkout@v4
 
-    - name: Setup Bun
-      uses: oven-sh/setup-bun@v1
-      with:
-        bun-version: latest
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
 
-    - name: Install dependencies
-      run: bun install
+      - name: Install dependencies
+        run: bun install
 
-    - name: Run Lint
-      run: bun run lint
+      - name: Run Lint
+        run: bun run lint
 
-    - name: Run Tests (Bun)
-      run: bun test --coverage --coverage-reporter=lcov --coverage-dir=./coverage/bun
+      - name: Run Tests with Coverage
+        run: bun test --coverage --coverage-reporter=lcov --coverage-dir=./coverage
 
-    - name: Run Tests (Node)
-      run: |
-        npm install
-        NODE_ENV=test npm test -- --coverage --coverage-reporter=lcov --coverage-dir=./coverage/node
-
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        directory: ./coverage
-        fail_ci_if_error: false
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./coverage
+          fail_ci_if_error: false
