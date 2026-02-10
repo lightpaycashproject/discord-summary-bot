@@ -22,6 +22,8 @@ class DatabaseService {
         guild_id TEXT,
         user_id TEXT,
         token_count INTEGER DEFAULT 0,
+        cost REAL DEFAULT 0,
+        model TEXT,
         PRIMARY KEY (channel_id, last_message_id)
       )`,
       `CREATE TABLE IF NOT EXISTS usage_stats (
@@ -30,20 +32,32 @@ class DatabaseService {
         guild_id TEXT,
         channel_id TEXT,
         tokens INTEGER,
+        cost REAL,
+        model TEXT,
         type TEXT,
         timestamp INTEGER
       )`,
     ];
     schemas.forEach((s) => this.db.exec(s));
 
-    // Migration: Add columns if they don't exist in summaries
-    try {
-      this.db.exec("ALTER TABLE summaries ADD COLUMN guild_id TEXT");
-      this.db.exec("ALTER TABLE summaries ADD COLUMN user_id TEXT");
-      this.db.exec("ALTER TABLE summaries ADD COLUMN token_count INTEGER DEFAULT 0");
-    } catch (e) {
-      // Columns already exist
-    }
+    // Migration: Add columns if they don't exist
+    const columns = [
+      { table: "summaries", col: "guild_id", type: "TEXT" },
+      { table: "summaries", col: "user_id", type: "TEXT" },
+      { table: "summaries", col: "token_count", type: "INTEGER DEFAULT 0" },
+      { table: "summaries", col: "cost", type: "REAL DEFAULT 0" },
+      { table: "summaries", col: "model", type: "TEXT" },
+      { table: "usage_stats", col: "cost", type: "REAL DEFAULT 0" },
+      { table: "usage_stats", col: "model", type: "TEXT" },
+    ];
+
+    columns.forEach(({ table, col, type }) => {
+      try {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+      } catch {
+        // Column already exists
+      }
+    });
   }
 
   getCachedTweet(url) {
@@ -69,25 +83,36 @@ class DatabaseService {
     return row ? row.summary_text : null;
   }
 
-  logUsage(userId, guildId, channelId, tokens, type = "summary") {
+  logUsage(userId, guildId, channelId, tokens, cost, model, type = "summary") {
     this.db
       .query(
-        "INSERT INTO usage_stats (user_id, guild_id, channel_id, tokens, type, timestamp) VALUES ($userId, $guildId, $channelId, $tokens, $type, $timestamp)",
+        "INSERT INTO usage_stats (user_id, guild_id, channel_id, tokens, cost, model, type, timestamp) VALUES ($userId, $guildId, $channelId, $tokens, $cost, $model, $type, $timestamp)",
       )
       .run({
         $userId: userId,
         $guildId: guildId,
         $channelId: channelId,
         $tokens: tokens,
+        $cost: cost,
+        $model: model,
         $type: type,
         $timestamp: Date.now(),
       });
   }
 
-  saveSummary(channelId, lastMessageId, summaryText, guildId = null, userId = null, tokens = 0) {
+  saveSummary(
+    channelId,
+    lastMessageId,
+    summaryText,
+    guildId = null,
+    userId = null,
+    tokens = 0,
+    cost = 0,
+    model = null,
+  ) {
     this.db
       .query(
-        "INSERT OR REPLACE INTO summaries (channel_id, last_message_id, summary_text, timestamp, guild_id, user_id, token_count) VALUES ($channelId, $lastMessageId, $summaryText, $timestamp, $guildId, $userId, $tokens)",
+        "INSERT OR REPLACE INTO summaries (channel_id, last_message_id, summary_text, timestamp, guild_id, user_id, token_count, cost, model) VALUES ($channelId, $lastMessageId, $summaryText, $timestamp, $guildId, $userId, $tokens, $cost, $model)",
       )
       .run({
         $channelId: channelId,
@@ -97,29 +122,44 @@ class DatabaseService {
         $guildId: guildId,
         $userId: userId,
         $tokens: tokens,
+        $cost: cost,
+        $model: model,
       });
 
     if (userId && guildId) {
-      this.logUsage(userId, guildId, channelId, tokens, "summary");
+      this.logUsage(userId, guildId, channelId, tokens, cost, model, "summary");
     }
   }
 
   getDetailedStats() {
     const topUsers = this.db
       .query(
-        "SELECT user_id, SUM(tokens) as total_tokens, COUNT(*) as count FROM usage_stats GROUP BY user_id ORDER BY total_tokens DESC LIMIT 5",
+        "SELECT user_id, SUM(tokens) as total_tokens, SUM(cost) as total_cost, COUNT(*) as count FROM usage_stats GROUP BY user_id ORDER BY total_cost DESC LIMIT 5",
       )
       .all();
     const topGuilds = this.db
       .query(
-        "SELECT guild_id, SUM(tokens) as total_tokens, COUNT(*) as count FROM usage_stats GROUP BY guild_id ORDER BY total_tokens DESC LIMIT 5",
+        "SELECT guild_id, SUM(tokens) as total_tokens, SUM(cost) as total_cost, COUNT(*) as count FROM usage_stats GROUP BY guild_id ORDER BY total_cost DESC LIMIT 5",
       )
       .all();
-    const totalTokens =
-      this.db.query("SELECT SUM(tokens) as total FROM usage_stats").get()
-        .total || 0;
+    const modelStats = this.db
+      .query(
+        "SELECT model, SUM(tokens) as total_tokens, SUM(cost) as total_cost, COUNT(*) as count FROM usage_stats GROUP BY model ORDER BY total_cost DESC",
+      )
+      .all();
+    const totals = this.db
+      .query(
+        "SELECT SUM(tokens) as totalTokens, SUM(cost) as totalCost FROM usage_stats",
+      )
+      .get() || { totalTokens: 0, totalCost: 0 };
 
-    return { topUsers, topGuilds, totalTokens };
+    return {
+      topUsers,
+      topGuilds,
+      modelStats,
+      totalTokens: totals.totalTokens || 0,
+      totalCost: totals.totalCost || 0,
+    };
   }
 
   clearChannelCache(channelId) {

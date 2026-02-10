@@ -47,29 +47,40 @@ module.exports = {
       try {
         const stats = db.getDetailedStats();
 
-        let statsMsg = "**📊 Bot Analytics**\n\n";
-        statsMsg += `**Total Estimated Tokens Used:** \`${stats.totalTokens}\`\n\n`;
+        let statsMsg = "**📊 Advanced Bot Analytics**\n\n";
+        statsMsg += `**Total Cost:** \`$${stats.totalCost.toFixed(6)}\`\n`;
+        statsMsg += `**Total Tokens:** \`${stats.totalTokens.toLocaleString()}\`\n\n`;
 
-        statsMsg += "**👑 Top Users (by usage)**\n";
+        statsMsg += "**💎 Top Users (by USD cost)**\n";
         if (stats.topUsers.length > 0) {
           stats.topUsers.forEach((u, i) => {
-            statsMsg += `${i + 1}. <@${u.user_id}>: \`${u.total_tokens}\` tokens (${u.count} reqs)\n`;
+            statsMsg += `${i + 1}. <@${u.user_id}>: \`$${u.total_cost.toFixed(6)}\` (${u.total_tokens.toLocaleString()} tokens)\n`;
           });
         } else {
           statsMsg += "_No usage data yet._\n";
         }
 
-        statsMsg += "\n**🏰 Top Servers (by usage)**\n";
+        statsMsg += "\n**🏰 Top Servers (by USD cost)**\n";
         if (stats.topGuilds.length > 0) {
           for (let i = 0; i < stats.topGuilds.length; i++) {
             const g = stats.topGuilds[i];
             const guildName =
               interaction.client.guilds.cache.get(g.guild_id)?.name ||
               `ID: ${g.guild_id}`;
-            statsMsg += `${i + 1}. **${guildName}**: \`${g.total_tokens}\` tokens\n`;
+            statsMsg += `${i + 1}. **${guildName}**: \`$${g.total_cost.toFixed(6)}\`\n`;
           }
         } else {
           statsMsg += "_No server data yet._\n";
+        }
+
+        statsMsg += "\n**🤖 Model Distribution**\n";
+        if (stats.modelStats.length > 0) {
+          stats.modelStats.forEach((m) => {
+            const modelName = m.model ? m.model.split("/").pop() : "Unknown";
+            statsMsg += `- **${modelName}**: \`$${m.total_cost.toFixed(6)}\` (${m.count} reqs)\n`;
+          });
+        } else {
+          statsMsg += "_No model data yet._\n";
         }
 
         await interaction.reply({

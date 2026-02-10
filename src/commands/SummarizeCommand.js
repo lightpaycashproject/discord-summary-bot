@@ -143,7 +143,7 @@ module.exports = {
       let lastUpdateTime = Date.now();
       const UPDATE_INTERVAL = 1500;
 
-      const summary = await summarizerService.summarize(
+      const result = await summarizerService.summarize(
         conversationText,
         async (currentFullText) => {
           const now = Date.now();
@@ -160,13 +160,17 @@ module.exports = {
         },
       );
 
+      const { summary, usage, model } = result;
+
       summarizerService.saveSummary(
         channel.id,
         lastMessageId,
         summary,
         interaction.guildId,
         interaction.user.id,
-        summary.split(/\s+/).length, // Estimated tokens
+        usage?.total_tokens || summary.split(/\s+/).length,
+        usage?.total_cost || 0,
+        model,
       );
       await dmMessage.edit(
         `**Conversation Summary for #${channel.name} (Last 24h)**\n\n${summary}`,

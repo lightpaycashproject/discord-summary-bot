@@ -13,9 +13,11 @@ describe("DatabaseService Extended", () => {
   });
 
   it("should return correct stats", () => {
-    const stats = dbService.getStats();
-    expect(stats).toHaveProperty("tweets");
-    expect(stats).toHaveProperty("summaries");
+    dbService.saveSummary("c1", "m1", "t", "g1", "u1", 100, 0.05, "mod");
+    const stats = dbService.getDetailedStats();
+    expect(stats).toHaveProperty("totalCost");
+    expect(stats.totalCost).toBeGreaterThan(0);
+    expect(stats.modelStats.length).toBeGreaterThan(0);
   });
 
   it("should close and cover close method", () => {

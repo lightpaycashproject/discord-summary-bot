@@ -20,11 +20,13 @@ module.exports = {
         },
         {
           name: "⚙️ `/admin stats` (Admin Only)",
-          value: "Shows bot usage statistics, token consumption, and leaderboards.",
+          value:
+            "Shows bot usage statistics, token consumption, and leaderboards.",
         },
         {
           name: "🧹 `/admin clear-cache` (Admin Only)",
-          value: "Clears the summary and X scraping cache for the current channel.",
+          value:
+            "Clears the summary and X scraping cache for the current channel.",
         },
       )
       .addFields({

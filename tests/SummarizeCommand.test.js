@@ -30,6 +30,7 @@ describe("SummarizeCommand", () => {
       deferReply: jest.fn(),
       editReply: jest.fn(),
       reply: jest.fn(),
+      guildId: "guild123",
     };
     spies = [];
     jest.restoreAllMocks();
@@ -143,7 +144,11 @@ describe("SummarizeCommand", () => {
             await cb("Live Update");
             Date.now = originalNow;
           }
-          return "Final Summary";
+          return {
+            summary: "Final Summary",
+            usage: { total_tokens: 10, total_cost: 0.01 },
+            model: "test-model",
+          };
         }),
     );
 
@@ -179,7 +184,7 @@ describe("SummarizeCommand", () => {
             await cb("test");
             Date.now = originalNow;
           }
-          return "summary";
+          return { summary: "summary", usage: {}, model: "m" };
         }),
     );
 

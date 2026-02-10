@@ -33,7 +33,16 @@ IMPORTANT: Wrap internal reasoning in <think> tags. The final output must NOT co
     return db.getCachedSummary(channelId, lastMessageId);
   }
 
-  saveSummary(channelId, lastMessageId, summaryText, guildId, userId, tokens) {
+  saveSummary(
+    channelId,
+    lastMessageId,
+    summaryText,
+    guildId,
+    userId,
+    tokens,
+    cost,
+    model,
+  ) {
     db.saveSummary(
       channelId,
       lastMessageId,
@@ -41,6 +50,8 @@ IMPORTANT: Wrap internal reasoning in <think> tags. The final output must NOT co
       guildId,
       userId,
       tokens,
+      cost,
+      model,
     );
   }
 
@@ -48,11 +59,11 @@ IMPORTANT: Wrap internal reasoning in <think> tags. The final output must NOT co
    * Summarizes the provided content using the OpenRouter SDK with streaming.
    * @param {string} content - The text to summarize.
    * @param {Function} onUpdate - Callback for filtered text updates.
-   * @returns {Promise<string>} - The final summarized text.
+   * @returns {Promise<Object>} - Object containing final summary, usage, and model.
    */
   async summarize(content, onUpdate = null) {
     if (!content || content.trim().length === 0) {
-      return "No content to summarize.";
+      return { summary: "No content to summarize.", usage: null, model: null };
     }
 
     try {
@@ -68,12 +79,19 @@ IMPORTANT: Wrap internal reasoning in <think> tags. The final output must NOT co
         stream: !!onUpdate,
       });
 
+      let fullText = "";
+      let usage = null;
+      let usedModel = llm.model;
+
       if (onUpdate) {
-        let fullText = "";
         let isThinking = false;
         let buffer = "";
 
         for await (const part of response) {
+          // Track usage and model if provided in stream
+          if (part.usage) usage = part.usage;
+          if (part.model) usedModel = part.model;
+
           const chunk = part.choices[0]?.delta?.content || "";
           buffer += chunk;
 
@@ -113,14 +131,20 @@ IMPORTANT: Wrap internal reasoning in <think> tags. The final output must NOT co
             }
           }
         }
-        return fullText.trim();
+        return { summary: fullText.trim(), usage, model: usedModel };
       } else {
+        usage = response.usage;
+        usedModel = response.model || llm.model;
         const text = response.choices[0]?.message?.content || "";
-        return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+        return {
+          summary: text.replace(/<think>[\s\S]*?<\/think>/g, "").trim(),
+          usage,
+          model: usedModel,
+        };
       }
     } catch (error) {
       console.error("Error summarizing content:", error.message);
-      throw error; // Rethrow to handle it in the command or test
+      throw error;
     }
   }
 }

@@ -47,9 +47,11 @@ describe("AdminCommand", () => {
   it("should show stats for admin", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("stats");
     const spy = jest.spyOn(db, "getDetailedStats").mockReturnValue({
-      topUsers: [{ user_id: "u1", total_tokens: 100, count: 5 }],
-      topGuilds: [{ guild_id: "g1", total_tokens: 100, count: 5 }],
+      topUsers: [{ user_id: "u1", total_cost: 0.1, total_tokens: 100 }],
+      topGuilds: [{ guild_id: "g1", total_cost: 0.1 }],
+      modelStats: [{ model: "m1", total_cost: 0.1, count: 1 }],
       totalTokens: 100,
+      totalCost: 0.1,
     });
     await AdminCommand.execute(mockInteraction);
     expect(mockInteraction.reply).toHaveBeenCalled();
