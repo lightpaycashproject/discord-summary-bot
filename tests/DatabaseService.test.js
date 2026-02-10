@@ -10,7 +10,7 @@ describe("DatabaseService", () => {
     const journalMode = dbService.db
       .query("PRAGMA journal_mode")
       .get().journal_mode;
-    // In-memory DB might return 'memory' or 'wal' depending on environment, 
+    // In-memory DB might return 'memory' or 'wal' depending on environment,
     // but the command should have run.
     expect(["wal", "memory"]).toContain(journalMode);
   });
@@ -118,7 +118,7 @@ describe("DatabaseService", () => {
   it("should handle error in version 2 migration columns", () => {
     // Force version to 1 so version 2 migration runs
     dbService.setSchemaVersion(1);
-    
+
     // Mock exec to throw for ALTER TABLE
     const originalExec = dbService.db.exec.bind(dbService.db);
     const spy = jest.spyOn(dbService.db, "exec").mockImplementation((sql) => {
