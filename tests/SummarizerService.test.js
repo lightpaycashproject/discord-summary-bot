@@ -5,6 +5,8 @@ const db = require("../src/services/DatabaseService");
 describe("SummarizerService with Caching", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(console, "log").mockImplementation(() => {});
   });
 
   it("should call DB for cached summary", () => {

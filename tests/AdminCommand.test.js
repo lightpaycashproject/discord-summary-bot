@@ -17,6 +17,8 @@ describe("AdminCommand", () => {
     };
     admin.userId = "admin123";
     jest.restoreAllMocks();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(console, "log").mockImplementation(() => {});
   });
 
   it("should deny non-admin users", async () => {
