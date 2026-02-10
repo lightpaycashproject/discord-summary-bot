@@ -13,6 +13,14 @@ const SummarizeCommand = require("../src/commands/SummarizeCommand");
 describe("SummarizeCommand", () => {
   let mockInteraction;
   let spies = [];
+  let originalNow;
+
+  const makeMessage = (id, ts, content = "msg") => ({
+    id,
+    createdTimestamp: ts,
+    author: { bot: false, username: "user" },
+    content,
+  });
 
   beforeEach(() => {
     mockInteraction = {
@@ -40,6 +48,8 @@ describe("SummarizeCommand", () => {
 
   afterEach(() => {
     spies.forEach((s) => s.mockRestore());
+    if (originalNow) Date.now = originalNow;
+    originalNow = undefined;
   });
 
   it("should deny non-text channels", async () => {
@@ -133,8 +143,7 @@ describe("SummarizeCommand", () => {
         .spyOn(summarizerService, "summarize")
         .mockImplementation(async (text, cb) => {
           if (cb) {
-            const originalNow = Date.now;
-            // Mock Date.now to pass the interval check (1500ms)
+            const original = Date.now;
             Date.now = jest
               .fn()
               .mockReturnValueOnce(0) // initial lastUpdateTime
@@ -142,7 +151,7 @@ describe("SummarizeCommand", () => {
               .mockReturnValueOnce(2000); // updating lastUpdateTime
 
             await cb("Live Update");
-            Date.now = originalNow;
+            Date.now = original;
           }
           return {
             summary: "Final Summary",
@@ -179,10 +188,10 @@ describe("SummarizeCommand", () => {
         .spyOn(summarizerService, "summarize")
         .mockImplementation(async (t, cb) => {
           if (cb) {
-            const originalNow = Date.now;
+            const original = Date.now;
             Date.now = jest.fn().mockReturnValueOnce(0).mockReturnValue(2000);
             await cb("test");
-            Date.now = originalNow;
+            Date.now = original;
           }
           return { summary: "summary", usage: {}, model: "m" };
         }),
@@ -213,9 +222,420 @@ describe("SummarizeCommand", () => {
     );
   });
 
-  it("should handle generic errors during execution", async () => {
-    mockInteraction.channel.messages.fetch.mockRejectedValue(new Error("Down"));
+  it("should handle summarize throwing errors", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: Date.now(),
+            author: { bot: false, username: "user" },
+            content: "hello",
+          },
+        ],
+      ]),
+    );
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+    jest
+      .spyOn(summarizerService, "summarize")
+      .mockRejectedValue(new Error("boom"));
+
     await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.editReply).toHaveBeenCalledWith(
+      "An error occurred while generating the summary.",
+    );
+  });
+
+  it("should ignore empty scrape results", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: Date.now(),
+            author: { bot: false, username: "user" },
+            content: "https://x.com/u/status/1",
+          },
+        ],
+      ]),
+    );
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+    jest.spyOn(scraperService, "scrapeTweet").mockResolvedValue(null);
+    jest.spyOn(summarizerService, "summarize").mockResolvedValue({
+      summary: "sum",
+      usage: { total_tokens: 1, total_cost: 0.001 },
+      model: "m",
+    });
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.editReply).toHaveBeenCalled();
+  });
+
+  it("should log and continue when scrape fails", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: Date.now(),
+            author: { bot: false, username: "user" },
+            content: "https://x.com/u/status/1",
+          },
+        ],
+      ]),
+    );
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+    jest
+      .spyOn(scraperService, "scrapeTweet")
+      .mockRejectedValue(new Error("scrape fail"));
+    jest.spyOn(summarizerService, "summarize").mockResolvedValue({
+      summary: "sum",
+      usage: { total_tokens: 1, total_cost: 0.001 },
+      model: "m",
+    });
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.editReply).toHaveBeenCalled();
+  });
+
+  it("should stop when allMessages > 10000", async () => {
+    originalNow = Date.now;
+    Date.now = jest.fn().mockReturnValue(originalNow());
+
+    const now = Date.now();
+    const batch = new Map();
+    for (let i = 0; i < 101; i++) {
+      batch.set(String(i), makeMessage(String(i), now, "hello"));
+    }
+
+    // Force 101 batches -> 101 * 101 > 10000
+    mockInteraction.channel.messages.fetch = jest.fn().mockResolvedValue(batch);
+
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+    jest.spyOn(summarizerService, "summarize").mockResolvedValue({
+      summary: "sum",
+      usage: { total_tokens: 1, total_cost: 0.001 },
+      model: "m",
+    });
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.channel.messages.fetch).toHaveBeenCalled();
+  });
+
+  it("should stop when passing the 24h cutoff", async () => {
+    originalNow = Date.now;
+    Date.now = jest.fn().mockReturnValue(originalNow());
+
+    const now = Date.now();
+    const old = now - 25 * 60 * 60 * 1000; // older than 24h
+    const batch = new Map([["1", makeMessage("1", old, "old")]]);
+
+    mockInteraction.channel.messages.fetch = jest.fn().mockResolvedValue(batch);
+
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+    jest.spyOn(summarizerService, "summarize").mockResolvedValue({
+      summary: "sum",
+      usage: { total_tokens: 1, total_cost: 0.001 },
+      model: "m",
+    });
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.editReply).toHaveBeenCalledWith(
+      "No conversation found in the last 24 hours to summarize.",
+    );
+  });
+
+  it("should skip DM edit when update interval not reached", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: Date.now(),
+            author: { bot: false, username: "user" },
+            content: "hi",
+          },
+        ],
+      ]),
+    );
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+
+    jest
+      .spyOn(summarizerService, "summarize")
+      .mockImplementation(async (text, cb) => {
+        if (cb) {
+          const original = Date.now;
+          Date.now = jest.fn().mockReturnValueOnce(0).mockReturnValueOnce(1000);
+          await cb("update");
+          Date.now = original;
+        }
+        return {
+          summary: "sum",
+          usage: { total_tokens: 1, total_cost: 0.001 },
+          model: "m",
+        };
+      });
+
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.editReply).toHaveBeenCalled();
+  });
+
+  it("should execute the update interval branch", async () => {
+    originalNow = Date.now;
+    Date.now = jest
+      .fn()
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(2000)
+      .mockReturnValue(2000);
+
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: 1000,
+            author: { bot: false, username: "user" },
+            content: "hi",
+          },
+        ],
+      ]),
+    );
+
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+
+    jest
+      .spyOn(summarizerService, "summarize")
+      .mockImplementation(async (text, cb) => {
+        if (cb) await cb("update");
+        return {
+          summary: "sum",
+          usage: { total_tokens: 1, total_cost: 0.001 },
+          model: "m",
+        };
+      });
+
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.user.send).toHaveBeenCalled();
+  });
+
+  it("should update DM when interval reached", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: Date.now(),
+            author: { bot: false, username: "user" },
+            content: "hi",
+          },
+        ],
+      ]),
+    );
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+
+    jest
+      .spyOn(summarizerService, "summarize")
+      .mockImplementation(async (text, cb) => {
+        if (cb) {
+          const original = Date.now;
+          Date.now = jest
+            .fn()
+            .mockReturnValueOnce(0) // lastUpdateTime
+            .mockReturnValueOnce(2000); // now
+          await cb("update");
+          Date.now = original;
+        }
+        return {
+          summary: "sum",
+          usage: { total_tokens: 1, total_cost: 0.001 },
+          model: "m",
+        };
+      });
+
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.editReply).toHaveBeenCalled();
+  });
+
+  it("should skip update if interval not reached", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: Date.now(),
+            author: { bot: false, username: "user" },
+            content: "hi",
+          },
+        ],
+      ]),
+    );
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+
+    jest
+      .spyOn(summarizerService, "summarize")
+      .mockImplementation(async (text, cb) => {
+        if (cb) {
+          const original = Date.now;
+          Date.now = jest.fn().mockReturnValueOnce(0).mockReturnValueOnce(1000);
+          await cb("update");
+          Date.now = original;
+        }
+        return {
+          summary: "sum",
+          usage: { total_tokens: 1, total_cost: 0.001 },
+          model: "m",
+        };
+      });
+
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.editReply).toHaveBeenCalled();
+  });
+
+  it("should fallback to word-count tokens if usage missing", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: Date.now(),
+            author: { bot: false, username: "user" },
+            content: "hello",
+          },
+        ],
+      ]),
+    );
+    const saveSpy = jest
+      .spyOn(summarizerService, "saveSummary")
+      .mockImplementation(() => {});
+
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+    jest.spyOn(summarizerService, "summarize").mockResolvedValue({
+      summary: "final summary",
+      usage: null,
+      model: "m",
+    });
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(saveSpy).toHaveBeenCalled();
+    const args = saveSpy.mock.calls[0];
+    expect(args[5]).toBeGreaterThan(0); // token fallback
+  });
+
+  it("should hit DM stream edit error branch", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: Date.now(),
+            author: { bot: false, username: "user" },
+            content: "hi",
+          },
+        ],
+      ]),
+    );
+    mockInteraction.user.send.mockResolvedValue({
+      edit: jest.fn().mockRejectedValue(new Error("fail")),
+    });
+
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+
+    jest
+      .spyOn(summarizerService, "summarize")
+      .mockImplementation(async (text, cb) => {
+        if (cb) {
+          const original = Date.now;
+          Date.now = jest.fn().mockReturnValueOnce(0).mockReturnValue(2000);
+          await cb("update");
+          Date.now = original;
+        }
+        return {
+          summary: "sum",
+          usage: { total_tokens: 1, total_cost: 0.001 },
+          model: "m",
+        };
+      });
+
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.editReply).toHaveBeenCalled();
+  });
+
+  it("should hit DM edit catch inside update interval branch", async () => {
+    originalNow = Date.now;
+    Date.now = jest.fn().mockReturnValueOnce(0); // for lastUpdateTime
+
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: Date.now(),
+            author: { bot: false, username: "user" },
+            content: "hi",
+          },
+        ],
+      ]),
+    );
+    mockInteraction.user.send.mockResolvedValue({
+      edit: jest.fn().mockRejectedValue(new Error("x")),
+    });
+
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+
+    jest
+      .spyOn(summarizerService, "summarize")
+      .mockImplementation(async (text, cb) => {
+        if (cb) {
+          Date.now = jest.fn().mockReturnValueOnce(2000);
+          await cb("update");
+        }
+        return {
+          summary: "sum",
+          usage: { total_tokens: 1, total_cost: 0.001 },
+          model: "m",
+        };
+      });
+
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
     expect(mockInteraction.editReply).toHaveBeenCalled();
   });
 });

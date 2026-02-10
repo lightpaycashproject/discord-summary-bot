@@ -2,7 +2,7 @@ const { expect, it, describe, beforeEach, jest } = require("bun:test");
 const db = require("../src/services/DatabaseService");
 const SummarizerService = require("../src/services/SummarizerService");
 
-describe("SummarizerService with Caching", () => {
+describe("SummarizerService", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
     jest.spyOn(console, "error").mockImplementation(() => {});
@@ -32,6 +32,22 @@ describe("SummarizerService with Caching", () => {
     expect(result.summary).toBe("Summary result");
     expect(result.usage.total_tokens).toBe(50);
     expect(result.model).toBe("test-model");
+    spy.mockRestore();
+  });
+
+  it("should include usage/model even when response.model is missing", async () => {
+    const mockResponse = {
+      choices: [{ message: { content: "Summary result" } }],
+      usage: { total_tokens: 10, total_cost: 0.001 },
+      model: undefined,
+    };
+    const spy = jest
+      .spyOn(SummarizerService.openRouter.chat, "send")
+      .mockResolvedValue(mockResponse);
+
+    const result = await SummarizerService.summarize("Long content");
+    expect(result.model).toBeDefined();
+    expect(result.usage.total_cost).toBe(0.001);
     spy.mockRestore();
   });
 
@@ -66,6 +82,21 @@ describe("SummarizerService with Caching", () => {
 
     const result = await SummarizerService.summarize("Content", () => {});
     expect(result.summary).toBe("Start End");
+    spy.mockRestore();
+  });
+
+  it("should handle stream with no closing </think>", async () => {
+    const mockStream = [
+      { choices: [{ delta: { content: "Hello <think>hidden" } }] },
+    ];
+
+    const spy = jest
+      .spyOn(SummarizerService.openRouter.chat, "send")
+      .mockReturnValue(mockStream);
+
+    const result = await SummarizerService.summarize("Content", () => {});
+    expect(result.summary).toBe("Hello");
+
     spy.mockRestore();
   });
 

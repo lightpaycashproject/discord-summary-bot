@@ -1,7 +1,11 @@
-const { expect, it, describe } = require("bun:test");
+const { expect, it, describe, beforeEach, jest } = require("bun:test");
 const dbService = require("../src/services/DatabaseService");
 
 describe("DatabaseService", () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it("should save and retrieve a tweet", () => {
     dbService.saveTweet("https://x.com/test1", "Tweet Content");
     const row = dbService.getCachedTweet("https://x.com/test1");
@@ -23,5 +27,68 @@ describe("DatabaseService", () => {
     dbService.saveSummary("chan_test", "msg_old", "Summary Old");
     const result = dbService.getCachedSummary("chan_test", "msg_new");
     expect(result).toBeNull();
+  });
+
+  it("should clear channel cache", () => {
+    dbService.saveSummary("chan_clear", "msg1", "To be cleared");
+    expect(dbService.getCachedSummary("chan_clear", "msg1")).toBe(
+      "To be cleared",
+    );
+
+    dbService.clearChannelCache("chan_clear");
+    expect(dbService.getCachedSummary("chan_clear", "msg1")).toBeNull();
+  });
+
+  it("should return correct stats", () => {
+    dbService.saveSummary("c1", "m1", "t", "g1", "u1", 100, 0.05, "mod");
+    const stats = dbService.getDetailedStats();
+    expect(stats).toHaveProperty("totalCost");
+    expect(stats.totalCost).toBeGreaterThan(0);
+    expect(stats.modelStats.length).toBeGreaterThan(0);
+  });
+
+  it("should track usage stats with cost and model", () => {
+    dbService.logUsage("user1", "guild1", "chan1", 100, 0.001, "gpt-4");
+    const stats = dbService.getDetailedStats();
+    expect(stats).toHaveProperty("totalCost");
+  });
+
+  it("should get top users by cost", () => {
+    dbService.logUsage("user1", "guild1", "chan1", 100, 0.01, "gpt-4");
+    dbService.logUsage("user2", "guild1", "chan1", 200, 0.02, "gpt-4");
+
+    const stats = dbService.getDetailedStats();
+    expect(Array.isArray(stats.topUsers)).toBe(true);
+    expect(stats.topUsers.length).toBeGreaterThan(0);
+  });
+
+  it("should get top guilds by cost", () => {
+    dbService.logUsage("user1", "guild1", "chan1", 100, 0.01, "gpt-4");
+    dbService.logUsage("user1", "guild2", "chan1", 200, 0.02, "gpt-4");
+
+    const stats = dbService.getDetailedStats();
+    expect(Array.isArray(stats.topGuilds)).toBe(true);
+    expect(stats.topGuilds.length).toBeGreaterThan(0);
+  });
+
+  it("should not crash if migration columns already exist", () => {
+    const originalExec = dbService.db.exec.bind(dbService.db);
+    const spy = jest.spyOn(dbService.db, "exec").mockImplementation((sql) => {
+      if (sql.startsWith("ALTER TABLE")) {
+        throw new Error("duplicate column");
+      }
+      return originalExec(sql);
+    });
+
+    expect(() => dbService.init()).not.toThrow();
+
+    spy.mockRestore();
+  });
+
+  it("should call db.close", () => {
+    const spy = jest.spyOn(dbService.db, "close").mockImplementation(() => {});
+    dbService.close();
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

@@ -67,4 +67,40 @@ describe("AdminCommand", () => {
     expect(mockInteraction.reply).toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it("should handle empty stats branches", async () => {
+    mockInteraction.options.getSubcommand.mockReturnValue("stats");
+    const spy = jest.spyOn(db, "getDetailedStats").mockReturnValue({
+      topUsers: [],
+      topGuilds: [],
+      modelStats: [],
+      totalTokens: 0,
+      totalCost: 0,
+    });
+
+    await AdminCommand.execute(mockInteraction);
+
+    expect(mockInteraction.reply).toHaveBeenCalled();
+    const replyArg = mockInteraction.reply.mock.calls[0][0];
+    expect(replyArg.content).toContain("No usage data yet");
+    expect(replyArg.content).toContain("No server data yet");
+    expect(replyArg.content).toContain("No model data yet");
+
+    spy.mockRestore();
+  });
+
+  it("should handle stats errors gracefully", async () => {
+    mockInteraction.options.getSubcommand.mockReturnValue("stats");
+    const spy = jest.spyOn(db, "getDetailedStats").mockImplementation(() => {
+      throw new Error("boom");
+    });
+
+    await AdminCommand.execute(mockInteraction);
+
+    expect(mockInteraction.reply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: "Failed to fetch stats." }),
+    );
+
+    spy.mockRestore();
+  });
 });
