@@ -25,11 +25,11 @@ jobs:
       run: bun run lint
 
     - name: Run Tests with Coverage
-      run: bun test --coverage
+      run: bun test --coverage --coverage-reporter=lcov --coverage-dir=./coverage
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        file: ./coverage/lcov.info
+        directory: ./coverage
         fail_ci_if_error: false
