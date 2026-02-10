@@ -7,7 +7,8 @@ A Discord bot that summarizes conversations in a text channel using AI (NVIDIA A
 - **Summarize Conversations**: Use `/summarize` to get a concise summary of the last 50 messages in the channel.
 - **X.com Scraping**: Automatically fetches and unrolls X.com / Twitter threads, including quoted tweets, using the FixTweet API (no browser required).
 - **Direct Message Delivery**: The summary is sent directly to your DMs to avoid cluttering the channel.
-- **OpenRouter Integration**: Built using the official OpenRouter SDK for reliable AI interaction.
+- **Smart Caching**: Local SQLite database caches X.com scraping results and generated summaries. If the conversation hasn't changed, the bot serves the cached summary to save API tokens.
+- **24-Hour Window**: Automatically fetches and summarizes the last 24 hours of conversation history.
 
 ## Prerequisites
 

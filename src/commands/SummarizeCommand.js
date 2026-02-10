@@ -21,10 +21,10 @@ module.exports = {
       const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
       const startTime = Date.now() - TWENTY_FOUR_HOURS;
       
-      // 1. Fetch messages from last 24 hours
       let allMessages = [];
       let lastId = null;
 
+      // 1. Fetch messages from last 24 hours (with limit safety)
       while (true) {
         const options = { limit: 100 };
         if (lastId) options.before = lastId;
@@ -36,14 +36,10 @@ module.exports = {
         allMessages.push(...filtered);
         
         lastId = filtered[filtered.length - 1].id;
-
-        // Stop if the oldest message fetched is beyond 24h
         if (filtered[filtered.length - 1].createdTimestamp < startTime) break;
-        // Safety break
         if (allMessages.length > 1000) break; 
       }
 
-      // Filter exactly to the 24h window and reverse to chronological
       const processedMessages = allMessages
         .filter(m => m.createdTimestamp >= startTime && !m.author.bot)
         .reverse();
@@ -54,7 +50,7 @@ module.exports = {
 
       const lastMessageId = processedMessages[processedMessages.length - 1].id;
 
-      // 2. Check Cache for existing summary
+      // 2. Check Cache
       const cachedSummary = summarizerService.getCachedSummary(channel.id, lastMessageId);
       if (cachedSummary) {
         try {
@@ -65,38 +61,59 @@ module.exports = {
         }
       }
 
-      // 3. Initial DM to the user
+      // 3. Pre-Scrape X Links in Parallel for Performance
+      const urlRegex = /(https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[a-zA-Z0-9_]+\/status\/\d+)/g;
+      const uniqueUrls = new Set();
+      processedMessages.forEach(m => {
+        const matches = m.content.match(urlRegex);
+        if (matches) matches.forEach(url => uniqueUrls.add(url));
+      });
+
+      const urlContextMap = new Map();
+      if (uniqueUrls.size > 0) {
+        const urlArray = Array.from(uniqueUrls);
+        const BATCH_SIZE = 5;
+        
+        for (let i = 0; i < urlArray.length; i += BATCH_SIZE) {
+          const batch = urlArray.slice(i, i + BATCH_SIZE);
+          const results = await Promise.all(batch.map(async (url) => {
+            try {
+              const content = await scraperService.scrapeTweet(url);
+              return { url, content };
+            } catch (e) {
+              return { url, content: null };
+            }
+          }));
+          results.forEach(res => {
+            if (res.content) urlContextMap.set(res.url, res.content);
+          });
+        }
+      }
+
+      // 4. Initial DM
       let dmMessage;
       try {
         dmMessage = await interaction.user.send(`⌛ **Generating summary for #${channel.name} (Last 24h)...**`);
         await interaction.editReply('Summary is being streamed to your DMs!');
       } catch (dmError) {
-        console.error('Failed to DM user:', dmError);
         return interaction.editReply('I could not send you a DM. Please check your privacy settings.');
       }
 
-      // 4. Generate conversation text and scrape X links
+      // 5. Build conversation text
       let conversationText = '';
       for (const msg of processedMessages) {
         let content = msg.content;
-        const urlRegex = /(https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[a-zA-Z0-9_]+\/status\/\d+)/g;
         const matches = content.match(urlRegex);
-
-        if (matches && matches.length > 0) {
-          for (const url of matches) {
-            try {
-              const tweetContent = await scraperService.scrapeTweet(url);
-              content += `\n[Tweet Context: ${tweetContent}]`;
-            } catch (err) {
-              console.error(`Failed to scrape tweet ${url}:`, err);
-            }
-          }
+        if (matches) {
+          matches.forEach(url => {
+            const context = urlContextMap.get(url);
+            if (context) content += `\n[Tweet Context: ${context}]`;
+          });
         }
-
         conversationText += `${msg.author.username}: ${content}\n`;
       }
 
-      // 5. Streaming setup
+      // 6. Summarize with Streaming
       let lastUpdateTime = Date.now();
       const UPDATE_INTERVAL = 1500; 
 
@@ -106,13 +123,10 @@ module.exports = {
           lastUpdateTime = now;
           try {
             await dmMessage.edit(`**Conversation Summary for #${channel.name} (Last 24h)**\n\n${currentFullText} ▌`);
-          } catch (e) {
-            console.error('Failed to update DM:', e.message);
-          }
+          } catch (e) {}
         }
       });
 
-      // 6. Save to Cache and final update
       summarizerService.saveSummary(channel.id, lastMessageId, summary);
       await dmMessage.edit(`**Conversation Summary for #${channel.name} (Last 24h)**\n\n${summary}`);
 

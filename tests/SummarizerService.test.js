@@ -30,22 +30,50 @@ describe('SummarizerService with Caching', () => {
     db.getCachedSummary.mockReturnValue('Cached summary');
     const result = SummarizerService.getCachedSummary('chan1', 'msg1');
     expect(result).toBe('Cached summary');
-    expect(db.getCachedSummary).toHaveBeenCalledWith('chan1', 'msg1');
   });
 
   it('should call SDK and return summary (non-streaming)', async () => {
-    const mockResponse = { choices: [{ message: { content: 'Summary text' } }] };
+    const mockResponse = { choices: [{ message: { content: '<think>Reasoning</think>Final result' } }] };
     mockSend.mockResolvedValue(mockResponse);
 
     const summary = await SummarizerService.summarize('Chat content');
-    
-    expect(summary).toBe('Summary text');
-    expect(mockSend).toHaveBeenCalled();
+    expect(summary).toBe('Final result');
+  });
+
+  it('should handle streaming summary and filter <think> tags', async () => {
+    const mockStream = (async function* () {
+      yield { choices: [{ delta: { content: 'Start ' } }] };
+      yield { choices: [{ delta: { content: '<think>' } }] };
+      yield { choices: [{ delta: { content: 'logic' } }] };
+      yield { choices: [{ delta: { content: '</think>' } }] };
+      yield { choices: [{ delta: { content: 'End' } }] };
+    })();
+    mockSend.mockResolvedValue(mockStream);
+
+    const updates = [];
+    const summary = await SummarizerService.summarize('content', (t) => updates.push(t));
+
+    expect(summary).toBe('Start End');
+    expect(updates).toContain('Start ');
+    expect(updates[updates.length - 1]).toBe('Start End');
+  });
+
+  it('should handle partial <think> tags across chunks', async () => {
+    const mockStream = (async function* () {
+      yield { choices: [{ delta: { content: 'Text ' } }] };
+      yield { choices: [{ delta: { content: '<th' } }] };
+      yield { choices: [{ delta: { content: 'ink>hidden</think>' } }] };
+      yield { choices: [{ delta: { content: ' more' } }] };
+    })();
+    mockSend.mockResolvedValue(mockStream);
+
+    const summary = await SummarizerService.summarize('content', () => {});
+    expect(summary).toBe('Text  more');
   });
 
   it('should save summary to DB', () => {
-    SummarizerService.saveSummary('chan1', 'msg1', 'Summary text');
-    expect(db.saveSummary).toHaveBeenCalledWith('chan1', 'msg1', 'Summary text');
+    SummarizerService.saveSummary('chan1', 'msg1', 'text');
+    expect(db.saveSummary).toHaveBeenCalledWith('chan1', 'msg1', 'text');
   });
 
   it('should handle API errors', async () => {

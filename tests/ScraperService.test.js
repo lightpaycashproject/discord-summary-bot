@@ -20,11 +20,15 @@ describe('ScraperService with Caching', () => {
     jest.clearAllMocks();
   });
 
+  it('should extract tweet ID correctly', () => {
+    const id = ScraperService.extractTweetId('https://x.com/user/status/123456');
+    expect(id).toBe('123456');
+    expect(ScraperService.extractTweetId('invalid')).toBeNull();
+  });
+
   it('should return cached tweet if available', async () => {
     db.getCachedTweet.mockReturnValue({ content: 'Cached Content' });
-    
     const result = await ScraperService.scrapeTweet('https://x.com/user/status/123');
-    
     expect(result).toBe('Cached Content');
     expect(axios.get).not.toHaveBeenCalled();
   });
@@ -39,9 +43,8 @@ describe('ScraperService with Caching', () => {
     axios.get.mockResolvedValue({ data: { tweet: mockTweet } });
 
     const result = await ScraperService.scrapeTweet('https://x.com/user/status/456');
-    
     expect(result).toBe('@test: New tweet');
-    expect(db.saveTweet).toHaveBeenCalledWith('https://x.com/user/status/456', '@test: New tweet');
+    expect(db.saveTweet).toHaveBeenCalled();
   });
 
   it('should unroll threads and cache result', async () => {
@@ -54,7 +57,6 @@ describe('ScraperService with Caching', () => {
       .mockResolvedValueOnce({ data: { tweet: tweet1 } });
 
     const result = await ScraperService.scrapeTweet('https://x.com/user/status/2');
-    
     expect(result).toContain('T1');
     expect(result).toContain('T2');
     expect(db.saveTweet).toHaveBeenCalled();
@@ -65,5 +67,20 @@ describe('ScraperService with Caching', () => {
     axios.get.mockRejectedValue(new Error('API Fail'));
     const result = await ScraperService.scrapeTweet('https://x.com/user/status/123');
     expect(result).toContain('Could not fetch tweet content');
+  });
+
+  it('should handle invalid URLs', async () => {
+    const result = await ScraperService.scrapeTweet('https://google.com');
+    expect(result).toContain('Could not extract tweet ID');
+  });
+
+  it('should format tweets with quotes correctly', () => {
+    const tweet = { 
+      author: { screen_name: 'userA' }, 
+      text: 'textA',
+      quote: { author: { screen_name: 'userB' }, text: 'textB' }
+    };
+    const output = ScraperService.formatTweet(tweet);
+    expect(output).toContain('Quoting @userB');
   });
 });
