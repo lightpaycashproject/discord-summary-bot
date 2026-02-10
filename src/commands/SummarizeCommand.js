@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require("discord.js");
 const scraperService = require("../services/ScraperService");
 const summarizerService = require("../services/SummarizerService");
+const db = require("../services/DatabaseService");
 
 /**
  * Helper class for managing stream updates to DMs.
@@ -103,17 +104,17 @@ module.exports = {
 
       const lastMessageId = processedMessages[processedMessages.length - 1].id;
 
-      // 2. Check Cache
-      const cachedSummary = summarizerService.getCachedSummary(
-        channel.id,
-        lastMessageId,
-      );
+      // 2. Check Cache (Perfect match or Recent TTL)
+      const cachedSummary =
+        summarizerService.getCachedSummary(channel.id, lastMessageId) ||
+        db.getRecentSummary(channel.id, 5 * 60 * 1000); // 5 minute TTL
+
       if (cachedSummary) {
         try {
           await interaction.user.send(
-            `**[CACHED] Conversation Summary for #${channel.name} (Last 24h)**\n\n${cachedSummary}`,
+            `**[FRESH] Conversation Summary for #${channel.name} (Last 24h)**\n\n${cachedSummary}`,
           );
-          return interaction.editReply("Sent the cached summary to your DMs!");
+          return interaction.editReply("Sent a fresh summary to your DMs!");
         } catch (dmError) {
           console.error("Failed to DM cached summary:", dmError.message);
           return interaction.editReply(

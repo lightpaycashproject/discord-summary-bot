@@ -8,6 +8,7 @@ const {
 } = require("bun:test");
 const scraperService = require("../src/services/ScraperService");
 const summarizerService = require("../src/services/SummarizerService");
+const dbService = require("../src/services/DatabaseService");
 const SummarizeCommand = require("../src/commands/SummarizeCommand");
 
 describe("SummarizeCommand", () => {
@@ -44,6 +45,7 @@ describe("SummarizeCommand", () => {
     jest.restoreAllMocks();
     jest.spyOn(console, "error").mockImplementation(() => {});
     jest.spyOn(console, "log").mockImplementation(() => {});
+    jest.spyOn(dbService, "getRecentSummary").mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -84,6 +86,35 @@ describe("SummarizeCommand", () => {
 
     await SummarizeCommand.execute(mockInteraction);
     expect(mockInteraction.user.send).toHaveBeenCalled();
+  });
+
+  it("should use recent summary within TTL if perfect match fails", async () => {
+    const msg = {
+      id: "2",
+      createdTimestamp: Date.now(),
+      author: { bot: false },
+      content: "hi",
+    };
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([["2", msg]]),
+    );
+
+    // Perfect match returns null
+    spies.push(
+      jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null),
+    );
+    // Recent TTL match returns a summary
+    spies.push(
+      jest
+        .spyOn(dbService, "getRecentSummary")
+        .mockReturnValue("Recent TTL Summary"),
+    );
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.user.send).toHaveBeenCalledWith(
+      expect.stringContaining("[FRESH]"),
+    );
   });
 
   it("should handle cached summary DM failure", async () => {

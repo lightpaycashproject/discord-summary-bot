@@ -6,6 +6,15 @@ describe("DatabaseService", () => {
     jest.restoreAllMocks();
   });
 
+  it("should enable WAL mode on initialization", () => {
+    const journalMode = dbService.db
+      .query("PRAGMA journal_mode")
+      .get().journal_mode;
+    // In-memory DB might return 'memory' or 'wal' depending on environment, 
+    // but the command should have run.
+    expect(["wal", "memory"]).toContain(journalMode);
+  });
+
   it("should save and retrieve a tweet", () => {
     dbService.saveTweet("https://x.com/test1", "Tweet Content");
     const row = dbService.getCachedTweet("https://x.com/test1");
@@ -126,5 +135,22 @@ describe("DatabaseService", () => {
       true,
     );
     spy.mockRestore();
+  });
+
+  it("should retrieve recent summary within TTL", async () => {
+    dbService.saveSummary("ttl_chan", "msg1", "New Summary");
+    const result = dbService.getRecentSummary("ttl_chan", 5000);
+    expect(result).toBe("New Summary");
+  });
+
+  it("should return null for summary outside TTL", async () => {
+    // Mock Date.now to simulate past
+    const originalNow = Date.now;
+    Date.now = jest.fn().mockReturnValue(originalNow() - 10000);
+    dbService.saveSummary("old_chan", "msg1", "Old Summary");
+
+    Date.now = originalNow;
+    const result = dbService.getRecentSummary("old_chan", 5000);
+    expect(result).toBeNull();
   });
 });

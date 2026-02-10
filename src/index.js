@@ -10,6 +10,7 @@ const { validateEnv } = require("./utils/envValidator");
 const summarizeCommand = require("./commands/SummarizeCommand");
 const adminCommand = require("./commands/AdminCommand");
 const helpCommand = require("./commands/HelpCommand");
+const scraperService = require("./services/ScraperService");
 
 // Validate environment variables before starting
 try {
@@ -34,9 +35,27 @@ client.commands.set(summarizeCommand.data.name, summarizeCommand);
 client.commands.set(adminCommand.data.name, adminCommand);
 client.commands.set(helpCommand.data.name, helpCommand);
 
+const urlRegex =
+  /(https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[a-zA-Z0-9_]+\/status\/\d+)/g;
+
 client.once(Events.ClientReady, (c) => {
   console.log(`Ready! Logged in as ${c.user.tag}`);
   // Initialize scraper (launch browser if needed, though now using API)
+});
+
+// Proactive Scraper: Pre-cache X/Twitter links as they appear
+client.on(Events.MessageCreate, async (message) => {
+  if (message.author.bot) return;
+
+  const matches = message.content.match(urlRegex);
+  if (matches) {
+    for (const url of matches) {
+      // Scrape in background (catch errors so bot doesn't crash)
+      scraperService.scrapeTweet(url).catch((e) => {
+        console.error(`Proactive scrape failed for ${url}:`, e.message);
+      });
+    }
+  }
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {

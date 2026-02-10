@@ -4,6 +4,7 @@ const { database } = require("../../config");
 class DatabaseService {
   constructor() {
     this.db = new Database(database.path);
+    this.db.exec("PRAGMA journal_mode = WAL;"); // Enable WAL mode for performance
     this.init();
   }
 
@@ -121,6 +122,22 @@ class DatabaseService {
         "SELECT summary_text FROM summaries WHERE channel_id = $channelId AND last_message_id = $lastMessageId",
       )
       .get({ $channelId: channelId, $lastMessageId: lastMessageId });
+    return row ? row.summary_text : null;
+  }
+
+  /**
+   * Returns a summary if one exists for the channel created within the TTL.
+   * @param {string} channelId
+   * @param {number} ttlMs - TTL in milliseconds
+   * @returns {string|null}
+   */
+  getRecentSummary(channelId, ttlMs = 300000) {
+    const cutoff = Date.now() - ttlMs;
+    const row = this.db
+      .query(
+        "SELECT summary_text FROM summaries WHERE channel_id = $channelId AND timestamp > $cutoff ORDER BY timestamp DESC LIMIT 1",
+      )
+      .get({ $channelId: channelId, $cutoff: cutoff });
     return row ? row.summary_text : null;
   }
 
