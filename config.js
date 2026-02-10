@@ -1,4 +1,4 @@
-require('dotenv').config();
+require("dotenv").config();
 
 module.exports = {
   discord: {
@@ -9,8 +9,8 @@ module.exports = {
   },
   llm: {
     apiKey: process.env.LLM_API_KEY,
-    baseURL: process.env.LLM_BASE_URL || 'https://openrouter.ai/api/v1',
-    model: process.env.LLM_MODEL || 'nvidia/llama-3.1-405b-instruct',
+    baseURL: process.env.LLM_BASE_URL || "https://openrouter.ai/api/v1",
+    model: process.env.LLM_MODEL || "nvidia/llama-3.1-405b-instruct",
   },
   scraper: {
     timeout: parseInt(process.env.SCRAPER_TIMEOUT) || 30000,
@@ -22,6 +22,9 @@ module.exports = {
     userId: process.env.ADMIN_USER_ID,
   },
   database: {
-    path: process.env.NODE_ENV === 'test' ? ':memory:' : (process.env.DATABASE_PATH || 'database.sqlite'),
+    path:
+      process.env.NODE_ENV === "test"
+        ? ":memory:"
+        : process.env.DATABASE_PATH || "database.sqlite",
   },
 };

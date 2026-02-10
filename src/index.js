@@ -1,10 +1,7 @@
-const { Client, GatewayIntentBits, Collection, Events } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-const config = require('../config');
-const summarizeCommand = require('./commands/SummarizeCommand');
-const adminCommand = require('./commands/AdminCommand');
-const ScraperService = require('./services/ScraperService');
+const { Client, GatewayIntentBits, Collection, Events } = require("discord.js");
+const config = require("../config");
+const summarizeCommand = require("./commands/SummarizeCommand");
+const adminCommand = require("./commands/AdminCommand");
 
 const client = new Client({
   intents: [
@@ -19,13 +16,12 @@ client.commands = new Collection();
 client.commands.set(summarizeCommand.data.name, summarizeCommand);
 client.commands.set(adminCommand.data.name, adminCommand);
 
-client.once(Events.ClientReady, c => {
+client.once(Events.ClientReady, (c) => {
   console.log(`Ready! Logged in as ${c.user.tag}`);
-  // Initialize scraper (launch browser)
-  ScraperService.init().catch(console.error);
+  // Initialize scraper (launch browser if needed, though now using API)
 });
 
-client.on(Events.InteractionCreate, async interaction => {
+client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isCommand()) return;
 
   const command = client.commands.get(interaction.commandName);
@@ -36,14 +32,16 @@ client.on(Events.InteractionCreate, async interaction => {
     await command.execute(interaction);
   } catch (error) {
     console.error(error);
-    await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+    await interaction.reply({
+      content: "There was an error while executing this command!",
+      ephemeral: true,
+    });
   }
 });
 
-// Handle graceful shutdown to close browser
-process.on('SIGINT', async () => {
-  console.log('Closing browser...');
-  await ScraperService.close();
+// Handle graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("Shutting down...");
   process.exit(0);
 });
 

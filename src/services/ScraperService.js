@@ -1,5 +1,5 @@
-const axios = require('axios');
-const db = require('./DatabaseService');
+const axios = require("axios");
+const db = require("./DatabaseService");
 
 class ScraperService {
   /**
@@ -24,29 +24,34 @@ class ScraperService {
         return `[Could not fetch tweet content for ID ${tweetId}]`;
       }
 
-      const formattedContent = thread.map(t => this.formatTweet(t)).join('\n---\n');
-      
+      const formattedContent = thread
+        .map((t) => this.formatTweet(t))
+        .join("\n---\n");
+
       // Save to Cache
       db.saveTweet(url, formattedContent);
 
       return formattedContent;
     } catch (error) {
-      console.error('Error scraping tweet:', error.message);
+      console.error("Error scraping tweet:", error.message);
       return `[Error fetching tweet: ${error.message}]`;
     }
   }
 
   /**
    * Recursively fetches a thread starting from a tweet ID.
-   * @param {string} tweetId 
-   * @param {Array} thread 
+   * @param {string} tweetId
+   * @param {Array} thread
    * @returns {Promise<Array>}
    */
   async fetchThread(tweetId, thread = []) {
     try {
-      const response = await axios.get(`https://api.fxtwitter.com/status/${tweetId}`, {
-        headers: { 'User-Agent': 'DiscordSummaryBot/1.0' }
-      });
+      const response = await axios.get(
+        `https://api.fxtwitter.com/status/${tweetId}`,
+        {
+          headers: { "User-Agent": "DiscordSummaryBot/1.0" },
+        },
+      );
 
       if (response.data && response.data.tweet) {
         const tweet = response.data.tweet;
@@ -61,7 +66,7 @@ class ScraperService {
         }
       }
       return thread;
-    } catch (error) {
+    } catch {
       // If we hit an error fetching a parent, just return what we have
       return thread;
     }
@@ -69,22 +74,22 @@ class ScraperService {
 
   /**
    * Formats a tweet object into a readable string.
-   * @param {Object} tweet 
+   * @param {Object} tweet
    * @returns {string}
    */
   formatTweet(tweet) {
     let output = `@${tweet.author.screen_name}: ${tweet.text}`;
-    
+
     if (tweet.quote) {
       output += `\n[Quoting @${tweet.quote.author.screen_name}]: ${tweet.quote.text}`;
     }
-    
+
     return output;
   }
 
   /**
    * Extracts the tweet ID from a URL.
-   * @param {string} url 
+   * @param {string} url
    * @returns {string|null}
    */
   extractTweetId(url) {
