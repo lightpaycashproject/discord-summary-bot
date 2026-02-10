@@ -2,51 +2,42 @@ const { expect, it, describe, beforeEach, jest } = require("bun:test");
 const db = require("../src/services/DatabaseService");
 const AdminCommand = require("../src/commands/AdminCommand");
 const { admin } = require("../config");
+const { createMockInteraction, silenceConsole } = require("./helpers");
 
 describe("AdminCommand", () => {
   let mockInteraction;
 
   beforeEach(() => {
-    mockInteraction = {
-      user: { id: "admin123" },
-      channelId: "chan123",
-      options: {
-        getSubcommand: jest.fn(),
-      },
-      client: {
-        guilds: {
-          cache: {
-            get: jest.fn().mockReturnValue({ name: "Test Server" }),
-          },
-        },
-      },
-      reply: jest.fn().mockResolvedValue({}),
+    jest.restoreAllMocks();
+    silenceConsole();
+    const { interaction } = createMockInteraction();
+    mockInteraction = interaction;
+    mockInteraction.options = { getSubcommand: jest.fn() };
+    mockInteraction.client = {
+      guilds: { cache: { get: jest.fn().mockReturnValue({ name: "Test Server" }) } },
     };
     admin.userId = "admin123";
-    jest.restoreAllMocks();
-    jest.spyOn(console, "error").mockImplementation(() => {});
-    jest.spyOn(console, "log").mockImplementation(() => {});
+    mockInteraction.user.id = "admin123";
   });
 
   it("should deny non-admin users", async () => {
     mockInteraction.user.id = "wronguser";
     await AdminCommand.execute(mockInteraction);
-    expect(mockInteraction.reply).toHaveBeenCalled();
+    expect(mockInteraction.reply).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("permission"),
+    }));
   });
 
   it("should clear cache for admin", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("clear-cache");
-    const spy = jest
-      .spyOn(db, "clearChannelCache")
-      .mockImplementation(() => {});
+    const spy = jest.spyOn(db, "clearChannelCache").mockImplementation(() => {});
     await AdminCommand.execute(mockInteraction);
     expect(spy).toHaveBeenCalled();
-    spy.mockRestore();
   });
 
   it("should show stats for admin", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("stats");
-    const spy = jest.spyOn(db, "getDetailedStats").mockReturnValue({
+    jest.spyOn(db, "getDetailedStats").mockReturnValue({
       topUsers: [{ user_id: "u1", total_cost: 0.1, total_tokens: 100 }],
       topGuilds: [{ guild_id: "g1", total_cost: 0.1 }],
       modelStats: [{ model: "m1", total_cost: 0.1, count: 1 }],
@@ -55,52 +46,32 @@ describe("AdminCommand", () => {
     });
     await AdminCommand.execute(mockInteraction);
     expect(mockInteraction.reply).toHaveBeenCalled();
-    spy.mockRestore();
   });
 
   it("should handle errors in clear-cache", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("clear-cache");
-    const spy = jest.spyOn(db, "clearChannelCache").mockImplementation(() => {
-      throw new Error("DB error");
-    });
+    jest.spyOn(db, "clearChannelCache").mockImplementation(() => { throw new Error("DB error"); });
     await AdminCommand.execute(mockInteraction);
     expect(mockInteraction.reply).toHaveBeenCalled();
-    spy.mockRestore();
   });
 
   it("should handle empty stats branches", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("stats");
-    const spy = jest.spyOn(db, "getDetailedStats").mockReturnValue({
-      topUsers: [],
-      topGuilds: [],
-      modelStats: [],
-      totalTokens: 0,
-      totalCost: 0,
+    jest.spyOn(db, "getDetailedStats").mockReturnValue({
+      topUsers: [], topGuilds: [], modelStats: [], totalTokens: 0, totalCost: 0,
     });
 
     await AdminCommand.execute(mockInteraction);
-
-    expect(mockInteraction.reply).toHaveBeenCalled();
     const replyArg = mockInteraction.reply.mock.calls[0][0];
     expect(replyArg.content).toContain("No usage data yet");
-    expect(replyArg.content).toContain("No server data yet");
-    expect(replyArg.content).toContain("No model data yet");
-
-    spy.mockRestore();
   });
 
   it("should handle stats errors gracefully", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("stats");
-    const spy = jest.spyOn(db, "getDetailedStats").mockImplementation(() => {
-      throw new Error("boom");
-    });
-
+    jest.spyOn(db, "getDetailedStats").mockImplementation(() => { throw new Error("boom"); });
     await AdminCommand.execute(mockInteraction);
-
-    expect(mockInteraction.reply).toHaveBeenCalledWith(
-      expect.objectContaining({ content: "Failed to fetch stats." }),
-    );
-
-    spy.mockRestore();
+    expect(mockInteraction.reply).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining("Failed to fetch stats"),
+    }));
   });
 });

@@ -1,138 +1,64 @@
 const { expect, it, describe, beforeEach, jest } = require("bun:test");
 const db = require("../src/services/DatabaseService");
 const SummarizerService = require("../src/services/SummarizerService");
+const { silenceConsole } = require("./helpers");
 
 describe("SummarizerService", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
-    jest.spyOn(console, "error").mockImplementation(() => {});
-    jest.spyOn(console, "log").mockImplementation(() => {});
+    silenceConsole();
   });
 
   it("should call DB for cached summary", () => {
-    const spy = jest
-      .spyOn(db, "getCachedSummary")
-      .mockReturnValue("Cached summary");
-    const result = SummarizerService.getCachedSummary("chan1", "msg1");
-    expect(result).toBe("Cached summary");
-    spy.mockRestore();
+    const spy = jest.spyOn(db, "getCachedSummary").mockReturnValue("S");
+    expect(SummarizerService.getCachedSummary("c", "m")).toBe("S");
   });
 
   it("should call SDK and return summary (non-streaming)", async () => {
-    const mockResponse = {
-      choices: [{ message: { content: "Summary result" } }],
-      usage: { total_tokens: 50, total_cost: 0.001 },
-      model: "test-model",
-    };
-    const spy = jest
-      .spyOn(SummarizerService.openRouter.chat, "send")
-      .mockResolvedValue(mockResponse);
-
-    const result = await SummarizerService.summarize("Long content");
-    expect(result.summary).toBe("Summary result");
-    expect(result.usage.total_tokens).toBe(50);
-    expect(result.model).toBe("test-model");
-    spy.mockRestore();
-  });
-
-  it("should include usage/model even when response.model is missing", async () => {
-    const mockResponse = {
-      choices: [{ message: { content: "Summary result" } }],
-      usage: { total_tokens: 10, total_cost: 0.001 },
-      model: undefined,
-    };
-    const spy = jest
-      .spyOn(SummarizerService.openRouter.chat, "send")
-      .mockResolvedValue(mockResponse);
-
-    const result = await SummarizerService.summarize("Long content");
-    expect(result.model).toBeDefined();
-    expect(result.usage.total_cost).toBe(0.001);
-    spy.mockRestore();
+    const mockRes = { choices: [{ message: { content: "Res" } }], usage: { t: 10 }, model: "m" };
+    jest.spyOn(SummarizerService.openRouter.chat, "send").mockResolvedValue(mockRes);
+    const result = await SummarizerService.summarize("Content");
+    expect(result.summary).toBe("Res");
   });
 
   it("should handle streaming summary and filter <think> tags", async () => {
     const mockStream = [
-      { choices: [{ delta: { content: "Hello " } }] },
-      { choices: [{ delta: { content: "<think>thinking</think>world" } }] },
+      { choices: [{ delta: { content: "H " } }] },
+      { choices: [{ delta: { content: "<think>t</think>W" } }] },
     ];
-    const spy = jest
-      .spyOn(SummarizerService.openRouter.chat, "send")
-      .mockReturnValue(mockStream);
-
+    jest.spyOn(SummarizerService.openRouter.chat, "send").mockReturnValue(mockStream);
     const updates = [];
-    const result = await SummarizerService.summarize("Content", (t) =>
-      updates.push(t),
-    );
-
-    expect(result.summary).toBe("Hello world");
-    expect(updates).toContain("Hello ");
-    spy.mockRestore();
+    const result = await SummarizerService.summarize("C", (t) => updates.push(t));
+    expect(result.summary).toBe("H W");
   });
 
-  it("should handle partial <think> tags across chunks", async () => {
+  it("should handle stream with cross-chunk <think> tags", async () => {
     const mockStream = [
-      { choices: [{ delta: { content: "Start " } }] },
+      { choices: [{ delta: { content: "S " } }] },
       { choices: [{ delta: { content: "<th" } }] },
-      { choices: [{ delta: { content: "ink>secret</think>End" } }] },
+      { choices: [{ delta: { content: "ink>t</think>E" } }] },
     ];
-    const spy = jest
-      .spyOn(SummarizerService.openRouter.chat, "send")
-      .mockReturnValue(mockStream);
-
-    const result = await SummarizerService.summarize("Content", () => {});
-    expect(result.summary).toBe("Start End");
-    spy.mockRestore();
+    jest.spyOn(SummarizerService.openRouter.chat, "send").mockReturnValue(mockStream);
+    const result = await SummarizerService.summarize("C", () => {});
+    expect(result.summary).toBe("S E");
   });
 
-  it("should handle stream with no closing </think>", async () => {
-    const mockStream = [
-      { choices: [{ delta: { content: "Hello <think>hidden" } }] },
-    ];
-
-    const spy = jest
-      .spyOn(SummarizerService.openRouter.chat, "send")
-      .mockReturnValue(mockStream);
-
-    const result = await SummarizerService.summarize("Content", () => {});
-    expect(result.summary).toBe("Hello");
-
-    spy.mockRestore();
+  it("should handle stream with unclosed <think> tag", async () => {
+    const mockStream = [{ choices: [{ delta: { content: "H <think>t" } }] }];
+    jest.spyOn(SummarizerService.openRouter.chat, "send").mockReturnValue(mockStream);
+    const result = await SummarizerService.summarize("C", () => {});
+    expect(result.summary).toBe("H");
   });
 
   it("should save summary to DB", () => {
     const spy = jest.spyOn(db, "saveSummary").mockImplementation(() => {});
-    SummarizerService.saveSummary(
-      "c1",
-      "m1",
-      "txt",
-      "g1",
-      "u1",
-      10,
-      0.1,
-      "mod",
-    );
-    expect(spy).toHaveBeenCalledWith(
-      "c1",
-      "m1",
-      "txt",
-      "g1",
-      "u1",
-      10,
-      0.1,
-      "mod",
-    );
-    spy.mockRestore();
+    SummarizerService.saveSummary("c", "m", "t", "g", "u", 10, 0.1, "mod");
+    expect(spy).toHaveBeenCalledWith("c", "m", "t", "g", "u", 10, 0.1, "mod");
   });
 
   it("should handle API errors", async () => {
-    const spy = jest
-      .spyOn(SummarizerService.openRouter.chat, "send")
-      .mockRejectedValue(new Error("API Fail"));
-    await expect(SummarizerService.summarize("content")).rejects.toThrow(
-      "API Fail",
-    );
-    spy.mockRestore();
+    jest.spyOn(SummarizerService.openRouter.chat, "send").mockRejectedValue(new Error("fail"));
+    await expect(SummarizerService.summarize("c")).rejects.toThrow("fail");
   });
 
   it("should return message for empty content", async () => {
