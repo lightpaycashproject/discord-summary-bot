@@ -91,4 +91,40 @@ describe("DatabaseService", () => {
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it("should handle empty stats branches", () => {
+    dbService.db.query("DELETE FROM usage_stats").run();
+    const stats = dbService.getDetailedStats();
+    expect(stats.totalTokens).toBe(0);
+    expect(stats.totalCost).toBe(0);
+  });
+
+  it("should handle stats with null sums", () => {
+    dbService.db.query("DELETE FROM usage_stats").run();
+    const stats = dbService.getDetailedStats();
+    expect(stats.totalTokens).toBe(0);
+    expect(stats.totalCost).toBe(0);
+  });
+
+  it("should track schema version", () => {
+    const version = dbService.getSchemaVersion();
+    expect(version).toBeGreaterThan(0);
+
+    dbService.setSchemaVersion(99);
+    expect(dbService.getSchemaVersion()).toBe(99);
+  });
+
+  it("should not run migrations if version is already current", () => {
+    const spy = jest.spyOn(dbService.db, "exec");
+    dbService.setSchemaVersion(2);
+    dbService.init();
+    // Only schema_meta should be created
+    const createTableCalls = spy.mock.calls.filter((c) =>
+      c[0].includes("CREATE TABLE"),
+    );
+    expect(createTableCalls.every((c) => c[0].includes("schema_meta"))).toBe(
+      true,
+    );
+    spy.mockRestore();
+  });
 });

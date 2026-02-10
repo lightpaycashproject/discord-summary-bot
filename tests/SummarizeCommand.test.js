@@ -638,4 +638,70 @@ describe("SummarizeCommand", () => {
 
     expect(mockInteraction.editReply).toHaveBeenCalled();
   });
+
+  it("should handle scrape failures and show warning in status", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: Date.now(),
+            author: { bot: false, username: "user" },
+            content: "https://x.com/u/status/1",
+          },
+        ],
+      ]),
+    );
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+    jest
+      .spyOn(scraperService, "scrapeTweet")
+      .mockResolvedValue("[Error: Failed]");
+    jest.spyOn(summarizerService, "summarize").mockResolvedValue({
+      summary: "Done",
+      usage: { total_tokens: 10, total_cost: 0.1 },
+      model: "gpt-4",
+    });
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    const sendCall = mockInteraction.user.send.mock.calls.find((c) =>
+      c[0].includes("could not be fully scraped"),
+    );
+    expect(sendCall).toBeDefined();
+  });
+
+  it("should handle scrape exceptions in the batch", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        [
+          "1",
+          {
+            id: "1",
+            createdTimestamp: Date.now(),
+            author: { bot: false, username: "user" },
+            content: "https://x.com/u/status/1",
+          },
+        ],
+      ]),
+    );
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
+    jest
+      .spyOn(scraperService, "scrapeTweet")
+      .mockRejectedValue(new Error("Network Error"));
+    jest.spyOn(summarizerService, "summarize").mockResolvedValue({
+      summary: "Done",
+      usage: { total_tokens: 10, total_cost: 0.1 },
+      model: "gpt-4",
+    });
+    jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {});
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    const sendCall = mockInteraction.user.send.mock.calls.find((c) =>
+      c[0].includes("could not be fully scraped"),
+    );
+    expect(sendCall).toBeDefined();
+  });
 });

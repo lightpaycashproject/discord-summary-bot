@@ -21,7 +21,7 @@ class ScraperService {
     try {
       const thread = await this.fetchThread(tweetId);
       if (!thread || thread.length === 0) {
-        return `[Could not fetch tweet content for ID ${tweetId}]`;
+        return `[Warning: Could not fetch content for tweet ${tweetId}. The service might be temporarily down or the tweet is private.]`;
       }
 
       const formattedContent = thread
@@ -34,7 +34,7 @@ class ScraperService {
       return formattedContent;
     } catch (error) {
       console.error("Error scraping tweet:", error.message);
-      return `[Error fetching tweet: ${error.message}]`;
+      return `[Error: Failed to reach the scraping service for ${url}.]`;
     }
   }
 

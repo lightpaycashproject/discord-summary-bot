@@ -132,6 +132,7 @@ module.exports = {
       });
 
       const urlContextMap = new Map();
+      let scrapeFailures = 0;
       if (uniqueUrls.size > 0) {
         const urlArray = Array.from(uniqueUrls);
         const BATCH_SIZE = 5;
@@ -142,9 +143,16 @@ module.exports = {
             batch.map(async (url) => {
               try {
                 const content = await scraperService.scrapeTweet(url);
+                if (
+                  content.includes("[Error") ||
+                  content.includes("[Warning")
+                ) {
+                  scrapeFailures++;
+                }
                 return { url, content };
               } catch (e) {
                 console.error(`Failed to scrape ${url}:`, e.message);
+                scrapeFailures++;
                 return { url, content: null };
               }
             }),
@@ -158,9 +166,11 @@ module.exports = {
       // 4. Initial DM
       let dmMessage;
       try {
-        dmMessage = await interaction.user.send(
-          `⌛ **Generating summary for #${channel.name} (Last 24h)...**`,
-        );
+        let statusMsg = `⌛ **Generating summary for #${channel.name} (Last 24h)...**`;
+        if (scrapeFailures > 0) {
+          statusMsg += `\n⚠️ *Note: ${scrapeFailures} Twitter link(s) could not be fully scraped.*`;
+        }
+        dmMessage = await interaction.user.send(statusMsg);
         await interaction.editReply("Summary is being streamed to your DMs!");
       } catch (dmError) {
         console.error("Failed to send initial DM:", dmError.message);

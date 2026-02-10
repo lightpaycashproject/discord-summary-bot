@@ -194,7 +194,9 @@ describe("ScraperService", () => {
       const result = await ScraperService.scrapeTweet(
         "https://x.com/user/status/123",
       );
-      expect(result).toContain("Could not fetch tweet content");
+      expect(result).toContain(
+        "Warning: Could not fetch content for tweet 123",
+      );
 
       global.fetch = originalFetch;
       spyGet.mockRestore();
@@ -209,7 +211,7 @@ describe("ScraperService", () => {
       const result = await ScraperService.scrapeTweet(
         "https://x.com/user/status/123",
       );
-      expect(result).toContain("Error fetching tweet: Fatal");
+      expect(result).toContain("Error: Failed to reach the scraping service");
 
       ScraperService.fetchThread = originalFetchThread;
     });
@@ -309,7 +311,7 @@ describe("ScraperService", () => {
         "https://x.com/user/status/123",
       );
 
-      expect(result).toContain("Error fetching tweet");
+      expect(result).toContain("Error: Failed to reach the scraping service");
 
       ScraperService.fetchThread = originalFetchThread;
       spyGet.mockRestore();

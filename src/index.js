@@ -6,9 +6,18 @@ const {
   Partials,
 } = require("discord.js");
 const config = require("../config");
+const { validateEnv } = require("./utils/envValidator");
 const summarizeCommand = require("./commands/SummarizeCommand");
 const adminCommand = require("./commands/AdminCommand");
 const helpCommand = require("./commands/HelpCommand");
+
+// Validate environment variables before starting
+try {
+  validateEnv(config);
+} catch (error) {
+  console.error("Configuration Error:", error.message);
+  process.exit(1);
+}
 
 const client = new Client({
   intents: [

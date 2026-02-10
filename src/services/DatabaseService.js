@@ -8,56 +8,97 @@ class DatabaseService {
   }
 
   init() {
-    const schemas = [
-      `CREATE TABLE IF NOT EXISTS scraped_data (
-        url TEXT PRIMARY KEY,
-        content TEXT,
-        timestamp INTEGER
-      )`,
-      `CREATE TABLE IF NOT EXISTS summaries (
-        channel_id TEXT,
-        last_message_id TEXT,
-        summary_text TEXT,
-        timestamp INTEGER,
-        guild_id TEXT,
-        user_id TEXT,
-        token_count INTEGER DEFAULT 0,
-        cost REAL DEFAULT 0,
-        model TEXT,
-        PRIMARY KEY (channel_id, last_message_id)
-      )`,
-      `CREATE TABLE IF NOT EXISTS usage_stats (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT,
-        guild_id TEXT,
-        channel_id TEXT,
-        tokens INTEGER,
-        cost REAL,
-        model TEXT,
-        type TEXT,
-        timestamp INTEGER
-      )`,
-    ];
-    schemas.forEach((s) => this.db.exec(s));
+    // Create meta table to track schema version
+    this.db.exec(`CREATE TABLE IF NOT EXISTS schema_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )`);
 
-    // Migration: Add columns if they don't exist
-    const columns = [
-      { table: "summaries", col: "guild_id", type: "TEXT" },
-      { table: "summaries", col: "user_id", type: "TEXT" },
-      { table: "summaries", col: "token_count", type: "INTEGER DEFAULT 0" },
-      { table: "summaries", col: "cost", type: "REAL DEFAULT 0" },
-      { table: "summaries", col: "model", type: "TEXT" },
-      { table: "usage_stats", col: "cost", type: "REAL DEFAULT 0" },
-      { table: "usage_stats", col: "model", type: "TEXT" },
+    const currentVersion = this.getSchemaVersion();
+
+    const migrations = [
+      {
+        version: 1,
+        run: () => {
+          this.db.exec(`CREATE TABLE IF NOT EXISTS scraped_data (
+            url TEXT PRIMARY KEY,
+            content TEXT,
+            timestamp INTEGER
+          )`);
+          this.db.exec(`CREATE TABLE IF NOT EXISTS summaries (
+            channel_id TEXT,
+            last_message_id TEXT,
+            summary_text TEXT,
+            timestamp INTEGER,
+            PRIMARY KEY (channel_id, last_message_id)
+          )`);
+          this.db.exec(`CREATE TABLE IF NOT EXISTS usage_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT,
+            guild_id TEXT,
+            channel_id TEXT,
+            tokens INTEGER,
+            timestamp INTEGER
+          )`);
+        },
+      },
+      {
+        version: 2,
+        run: () => {
+          // Add tracking columns to summaries
+          const summaryCols = [
+            { col: "guild_id", type: "TEXT" },
+            { col: "user_id", type: "TEXT" },
+            { col: "token_count", type: "INTEGER DEFAULT 0" },
+            { col: "cost", type: "REAL DEFAULT 0" },
+            { col: "model", type: "TEXT" },
+          ];
+          summaryCols.forEach(({ col, type }) => {
+            try {
+              this.db.exec(`ALTER TABLE summaries ADD COLUMN ${col} ${type}`);
+            } catch {
+              /* ignore */
+            }
+          });
+
+          // Add cost/model to usage_stats
+          const usageCols = [
+            { col: "cost", type: "REAL DEFAULT 0" },
+            { col: "model", type: "TEXT" },
+            { col: "type", type: "TEXT DEFAULT 'summary'" },
+          ];
+          usageCols.forEach(({ col, type }) => {
+            try {
+              this.db.exec(`ALTER TABLE usage_stats ADD COLUMN ${col} ${type}`);
+            } catch {
+              /* ignore */
+            }
+          });
+        },
+      },
     ];
 
-    columns.forEach(({ table, col, type }) => {
-      try {
-        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
-      } catch {
-        // Column already exists
+    migrations.forEach((m) => {
+      if (m.version > currentVersion) {
+        m.run();
+        this.setSchemaVersion(m.version);
       }
     });
+  }
+
+  getSchemaVersion() {
+    const row = this.db
+      .query("SELECT value FROM schema_meta WHERE key = 'version'")
+      .get();
+    return row ? parseInt(row.value) : 0;
+  }
+
+  setSchemaVersion(v) {
+    this.db
+      .query(
+        "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', $v)",
+      )
+      .run({ $v: v.toString() });
   }
 
   getCachedTweet(url) {
@@ -151,14 +192,14 @@ class DatabaseService {
       .query(
         "SELECT SUM(tokens) as totalTokens, SUM(cost) as totalCost FROM usage_stats",
       )
-      .get() || { totalTokens: 0, totalCost: 0 };
+      .get();
 
     return {
       topUsers,
       topGuilds,
       modelStats,
-      totalTokens: totals.totalTokens || 0,
-      totalCost: totals.totalCost || 0,
+      totalTokens: (totals && totals.totalTokens) || 0,
+      totalCost: (totals && totals.totalCost) || 0,
     };
   }
 
