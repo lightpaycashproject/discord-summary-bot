@@ -1,25 +1,21 @@
 # Discord Summary Bot
 
-A Discord bot that summarizes conversations in a text channel using AI (NVIDIA API / OpenRouter) and scrapes context from X.com links.
+A high-performance Discord bot that summarizes conversations in text channels using AI (OpenRouter) and scrapes context from X.com links. **Built optimized specifically for the Bun runtime.**
 
 ## Features
 
-- **Summarize Conversations**: Use `/summarize` to get a concise summary of the last 50 messages in the channel.
-- **X.com Scraping**: Automatically fetches and unrolls X.com / Twitter threads, including quoted tweets, using the FixTweet API (no browser required).
-- **Direct Message Delivery**: The summary is sent directly to your DMs to avoid cluttering the channel.
-- **Smart Caching**: Local SQLite database caches X.com scraping results and generated summaries. If the conversation hasn't changed, the bot serves the cached summary to save API tokens.
-- **24-Hour Window**: Automatically fetches and summarizes the last 24 hours of conversation history.
-- **Crypto & Alpha Focused**: Optimized prompt to identify projects, alpha, and crypto signals in the conversation.
-- **User Contributions**: Lists what each significant participant contributed to the discussion.
-- **Multi-Server Support**: Works across any number of Discord servers.
-- **Admin Commands**: Special commands for bot administrators (stats, cache management).
-- **CI/CD**: Fully automated GitHub Actions workflow with linting and coverage checks.
+- **Summarize Conversations**: Use `/summarize` to get a structured summary of the last 24 hours of messages.
+- **X.com Thread Unrolling**: Automatically fetches and unrolls X.com / Twitter threads, including quoted tweets and images, using the FixTweet API.
+- **Crypto & Alpha Expert**: Optimized AI persona to identify projects, alpha, and crypto signals.
+- **User Contribution Tracking**: Breaks down what each participant contributed to the discussion.
+- **Smart Caching**: Local SQLite database (`bun:sqlite`) caches scraping results and summaries for maximum performance and token efficiency.
+- **Streaming Delivery**: Watch the summary appear live in your DMs.
 
 ## Prerequisites
 
-- Node.js (v18+)
+- **Bun (v1.1+)**: This project is optimized for Bun and uses `bun:sqlite` and native `fetch`. Node.js is not supported.
 - Discord Bot Token
-- OpenRouter or NVIDIA API Key
+- OpenRouter API Key
 
 ## Setup
 
@@ -31,7 +27,7 @@ A Discord bot that summarizes conversations in a text channel using AI (NVIDIA A
 
 2.  **Install dependencies**:
     ```bash
-    npm install
+    bun install
     ```
 
 3.  **Configure Environment**:
@@ -39,43 +35,45 @@ A Discord bot that summarizes conversations in a text channel using AI (NVIDIA A
     ```bash
     cp .env.example .env
     ```
-    - `DISCORD_TOKEN`: Your bot token from the Discord Developer Portal.
+    - `DISCORD_TOKEN`: Your bot token.
     - `CLIENT_ID`: Your bot's Client ID.
-    - `GUILD_ID`: The ID of the server where you want to deploy commands (optional, for faster registration).
-    - `LLM_API_KEY`: API key for OpenRouter or NVIDIA.
-    - `LLM_BASE_URL`: Base URL (e.g., `https://integrate.api.nvidia.com/v1` or `https://openrouter.ai/api/v1`).
-    - `LLM_MODEL`: The model ID (e.g., `nvidia/llama-3.1-405b-instruct`).
+    - `GUILD_ID`: (Optional) The ID of a specific server for instant command registration.
+    - `ADMIN_USER_ID`: Your Discord User ID for admin commands.
+    - `LLM_API_KEY`: Your OpenRouter API key.
 
 4.  **Deploy Commands**:
-    Register the slash commands with Discord:
     ```bash
-    npm run deploy
+    bun run deploy
     ```
 
 5.  **Run the Bot**:
     ```bash
-    npm start
+    bun start
     ```
 
 ## Development
 
 - **Run Tests**:
     ```bash
-    npm test
+    bun test
+    ```
+- **Coverage**:
+    ```bash
+    bun run test:coverage
     ```
 - **Linting**:
     ```bash
-    npm run lint
+    bun run lint
     ```
-- **CI/CD**:
-    The repository includes a GitHub Actions workflow that automatically runs linting and tests on every push. It also integrates with Codecov for coverage tracking.
 
 ## Architecture
 
 - **`src/index.js`**: Main entry point.
-- **`src/services/ScraperService.js`**: Handles fetching tweet content via Puppeteer (uses Nitter fallback).
-- **`src/services/SummarizerService.js`**: Interfaces with the LLM API.
-- **`src/commands/SummarizeCommand.js`**: Implements the `/summarize` logic.
+- **`src/services/ScraperService.js`**: Recursive X.com thread fetcher using `fetch`.
+- **`src/services/SummarizerService.js`**: OpenRouter SDK integration with streaming.
+- **`src/services/DatabaseService.js`**: Persistence layer using `bun:sqlite`.
+- **`src/commands/SummarizeCommand.js`**: The main `/summarize` logic.
+- **`src/commands/AdminCommand.js`**: Administrative tools (`/admin stats`, `/admin clear-cache`).
 
 ## License
 
