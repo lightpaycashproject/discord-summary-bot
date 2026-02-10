@@ -5,9 +5,9 @@ A Discord bot that summarizes conversations in a text channel using AI (NVIDIA A
 ## Features
 
 - **Summarize Conversations**: Use `/summarize` to get a concise summary of the last 50 messages in the channel.
-- **X.com Scraping**: Automatically fetches and includes the text content of any X.com / Twitter links shared in the conversation.
+- **X.com Scraping**: Automatically fetches and unrolls X.com / Twitter threads, including quoted tweets, using the FixTweet API (no browser required).
 - **Direct Message Delivery**: The summary is sent directly to your DMs to avoid cluttering the channel.
-- **Configurable**: Easily switch between LLM providers and models.
+- **OpenRouter Integration**: Built using the official OpenRouter SDK for reliable AI interaction.
 
 ## Prerequisites
 
