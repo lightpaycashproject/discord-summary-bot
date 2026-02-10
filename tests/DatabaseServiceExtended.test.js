@@ -19,7 +19,7 @@ describe("DatabaseService Extended", () => {
   });
 
   it("should close and cover close method", () => {
-    // We only call it to cover the line. 
+    // We only call it to cover the line.
     // Testing behavior after close is done in other files which will fail if run in parallel,
     // but bun test runs them in isolation usually or sequentially in this set.
     // To be safe, we don't close the global singleton if other tests need it.
