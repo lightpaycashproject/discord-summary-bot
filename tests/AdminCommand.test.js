@@ -30,10 +30,12 @@ describe("AdminCommand", () => {
 
   it("should clear cache for admin", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("clear-cache");
-    const spy = jest.spyOn(db, "clearChannelCache").mockImplementation(() => {});
-    
+    const spy = jest
+      .spyOn(db, "clearChannelCache")
+      .mockImplementation(() => {});
+
     await AdminCommand.execute(mockInteraction);
-    
+
     expect(spy).toHaveBeenCalledWith("chan123");
     expect(mockInteraction.reply).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -45,10 +47,12 @@ describe("AdminCommand", () => {
 
   it("should show stats for admin", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("stats");
-    const spy = jest.spyOn(db, "getStats").mockReturnValue({ tweets: 10, summaries: 5 });
-    
+    const spy = jest
+      .spyOn(db, "getStats")
+      .mockReturnValue({ tweets: 10, summaries: 5 });
+
     await AdminCommand.execute(mockInteraction);
-    
+
     expect(mockInteraction.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining("Cached Tweets: 10"),
@@ -62,9 +66,9 @@ describe("AdminCommand", () => {
     const spy = jest.spyOn(db, "clearChannelCache").mockImplementation(() => {
       throw new Error("DB error");
     });
-    
+
     await AdminCommand.execute(mockInteraction);
-    
+
     expect(mockInteraction.reply).toHaveBeenCalledWith(
       expect.objectContaining({
         content: expect.stringContaining("Failed to clear cache"),
