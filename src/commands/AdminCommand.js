@@ -46,9 +46,35 @@ module.exports = {
         });
       }
     } else if (subcommand === "stats") {
-      const stats = db.getStats();
+      const stats = db.getDetailedStats();
+
+      let statsMsg = "**📊 Bot Analytics**\n\n";
+      statsMsg += `**Total Estimated Tokens Used:** \`${stats.totalTokens}\`\n\n`;
+
+      statsMsg += "**👑 Top Users (by usage)**\n";
+      if (stats.topUsers.length > 0) {
+        stats.topUsers.forEach((u, i) => {
+          statsMsg += `${i + 1}. <@${u.user_id}>: \`${u.total_tokens}\` tokens (${u.count} reqs)\n`;
+        });
+      } else {
+        statsMsg += "_No usage data yet._\n";
+      }
+
+      statsMsg += "\n**🏰 Top Servers (by usage)**\n";
+      if (stats.topGuilds.length > 0) {
+        for (let i = 0; i < stats.topGuilds.length; i++) {
+          const g = stats.topGuilds[i];
+          const guildName =
+            interaction.client.guilds.cache.get(g.guild_id)?.name ||
+            `ID: ${g.guild_id}`;
+          statsMsg += `${i + 1}. **${guildName}**: \`${g.total_tokens}\` tokens\n`;
+        }
+      } else {
+        statsMsg += "_No server data yet._\n";
+      }
+
       await interaction.reply({
-        content: `**Bot Stats**\n- Cached Tweets: ${stats.tweets}\n- Cached Summaries: ${stats.summaries}`,
+        content: statsMsg,
         ephemeral: true,
       });
     }

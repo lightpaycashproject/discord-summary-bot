@@ -13,6 +13,13 @@ describe("AdminCommand", () => {
       options: {
         getSubcommand: jest.fn(),
       },
+      client: {
+        guilds: {
+          cache: {
+            get: jest.fn().mockReturnValue({ name: "Test Server" }),
+          },
+        },
+      },
       reply: jest.fn().mockResolvedValue({}),
     };
     admin.userId = "admin123";
@@ -39,9 +46,11 @@ describe("AdminCommand", () => {
 
   it("should show stats for admin", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("stats");
-    const spy = jest
-      .spyOn(db, "getStats")
-      .mockReturnValue({ tweets: 10, summaries: 5 });
+    const spy = jest.spyOn(db, "getDetailedStats").mockReturnValue({
+      topUsers: [{ user_id: "u1", total_tokens: 100, count: 5 }],
+      topGuilds: [{ guild_id: "g1", total_tokens: 100, count: 5 }],
+      totalTokens: 100,
+    });
     await AdminCommand.execute(mockInteraction);
     expect(mockInteraction.reply).toHaveBeenCalled();
     spy.mockRestore();

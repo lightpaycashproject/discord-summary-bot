@@ -157,7 +157,14 @@ module.exports = {
         },
       );
 
-      summarizerService.saveSummary(channel.id, lastMessageId, summary);
+      summarizerService.saveSummary(
+      channel.id,
+      lastMessageId,
+      summary,
+      interaction.guildId,
+      interaction.user.id,
+      summary.split(/\s+/).length, // Estimated tokens
+    );
       await dmMessage.edit(
         `**Conversation Summary for #${channel.name} (Last 24h)**\n\n${summary}`,
       );

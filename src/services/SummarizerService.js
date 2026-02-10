@@ -33,8 +33,15 @@ IMPORTANT: Wrap internal reasoning in <think> tags. The final output must NOT co
     return db.getCachedSummary(channelId, lastMessageId);
   }
 
-  saveSummary(channelId, lastMessageId, summaryText) {
-    db.saveSummary(channelId, lastMessageId, summaryText);
+  saveSummary(channelId, lastMessageId, summaryText, guildId, userId, tokens) {
+    db.saveSummary(
+      channelId,
+      lastMessageId,
+      summaryText,
+      guildId,
+      userId,
+      tokens,
+    );
   }
 
   /**
