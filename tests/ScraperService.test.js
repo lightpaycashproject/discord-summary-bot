@@ -1,12 +1,12 @@
-const axios = require("axios");
 const db = require("../src/services/DatabaseService");
 const ScraperService = require("../src/services/ScraperService");
-
-axios.get = jest.fn();
 
 describe("ScraperService with Caching", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Clear global fetch mock if it exists
+    if (global.fetch && global.fetch.mockClear) global.fetch.mockClear();
+    else global.fetch = jest.fn();
   });
 
   it("should extract tweet ID correctly", () => {
@@ -25,7 +25,7 @@ describe("ScraperService with Caching", () => {
       "https://x.com/user/status/123",
     );
     expect(result).toBe("Cached Content");
-    expect(axios.get).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 
@@ -38,7 +38,11 @@ describe("ScraperService with Caching", () => {
       text: "New tweet",
       replying_to_status: null,
     };
-    axios.get.mockResolvedValue({ data: { tweet: mockTweet } });
+
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ tweet: mockTweet }),
+    });
 
     const result = await ScraperService.scrapeTweet(
       "https://x.com/user/status/456",
@@ -65,9 +69,15 @@ describe("ScraperService with Caching", () => {
       replying_to_status: null,
     };
 
-    axios.get
-      .mockResolvedValueOnce({ data: { tweet: tweet2 } })
-      .mockResolvedValueOnce({ data: { tweet: tweet1 } });
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ tweet: tweet2 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ tweet: tweet1 }),
+      });
 
     const result = await ScraperService.scrapeTweet(
       "https://x.com/user/status/2",
@@ -87,8 +97,12 @@ describe("ScraperService with Caching", () => {
       text: "T",
       replying_to_status: "1",
     };
-    axios.get
-      .mockResolvedValueOnce({ data: { tweet: tweet } })
+
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ tweet: tweet }),
+      })
       .mockRejectedValueOnce(new Error("Network fail"));
 
     const result = await ScraperService.scrapeTweet("https://x.com/u/status/2");
@@ -108,7 +122,10 @@ describe("ScraperService with Caching", () => {
         text: "Strategy has acquired 1,142 BTC...",
       },
     };
-    axios.get.mockResolvedValue({ data: { tweet: mockTweet } });
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ tweet: mockTweet }),
+    });
 
     const result = await ScraperService.scrapeTweet(
       "https://x.com/derteil00/status/2020857102021914803",
@@ -127,7 +144,7 @@ describe("ScraperService with Caching", () => {
       author: { screen_name: "user" },
       text: "Look at this",
       media: {
-        photos: [
+        all: [
           { url: "https://x.com/img1.jpg" },
           { url: "https://x.com/img2.jpg" },
         ],
@@ -146,7 +163,7 @@ describe("ScraperService with Caching", () => {
         author: { screen_name: "quoted" },
         text: "Quoted text",
         media: {
-          photos: [{ url: "https://x.com/quote_img.jpg" }],
+          all: [{ url: "https://x.com/quote_img.jpg" }],
         },
       },
     };
@@ -156,7 +173,7 @@ describe("ScraperService with Caching", () => {
 
   it("should handle API failures gracefully", async () => {
     const spyGet = jest.spyOn(db, "getCachedTweet").mockReturnValue(null);
-    axios.get.mockRejectedValue(new Error("API Fail"));
+    global.fetch.mockRejectedValue(new Error("API Fail"));
     const result = await ScraperService.scrapeTweet(
       "https://x.com/user/status/123",
     );
@@ -171,7 +188,9 @@ describe("ScraperService with Caching", () => {
 
   it("should handle fatal errors in scrapeTweet", async () => {
     const originalFetch = ScraperService.fetchThread;
-    ScraperService.fetchThread = jest.fn().mockRejectedValue(new Error("Fatal"));
+    ScraperService.fetchThread = jest
+      .fn()
+      .mockRejectedValue(new Error("Fatal"));
 
     const result = await ScraperService.scrapeTweet(
       "https://x.com/user/status/123",

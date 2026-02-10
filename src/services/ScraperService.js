@@ -1,6 +1,3 @@
-const axios = require("axios");
-const db = require("./DatabaseService");
-
 class ScraperService {
   /**
    * Scrapes tweet content from a given URL using FixTweet (fxtwitter) API.
@@ -9,6 +6,9 @@ class ScraperService {
    * @returns {Promise<string>} - The text content of the tweet including quotes and thread.
    */
   async scrapeTweet(url) {
+    // DatabaseService is required dynamically to avoid circular dependency if any
+    const db = require("./DatabaseService");
+
     // Check Cache
     const cached = db.getCachedTweet(url);
     if (cached) return cached.content;
@@ -46,20 +46,23 @@ class ScraperService {
    */
   async fetchThread(tweetId, thread = []) {
     try {
-      const response = await axios.get(
+      const response = await fetch(
         `https://api.fxtwitter.com/status/${tweetId}`,
         {
           headers: { "User-Agent": "DiscordSummaryBot/1.0" },
         },
       );
 
-      if (response.data && response.data.tweet) {
-        const tweet = response.data.tweet;
+      if (!response.ok) return thread;
+
+      const data = await response.json();
+
+      if (data && data.tweet) {
+        const tweet = data.tweet;
         thread.unshift(tweet); // Add to the beginning of the thread array
 
         // If this tweet is a reply, fetch the parent
         if (tweet.replying_to_status) {
-          // Limit thread depth to avoid infinite loops or massive payloads
           if (thread.length < 10) {
             return await this.fetchThread(tweet.replying_to_status, thread);
           }
@@ -68,31 +71,30 @@ class ScraperService {
       return thread;
     } catch (e) {
       console.error(`Thread fetch error for ${tweetId}:`, e.message);
-      // If we hit an error fetching a parent, just return what we have
       return thread;
     }
   }
 
   /**
    * Formats a tweet object into a readable string.
-   * @param {Object} tweet 
+   * @param {Object} tweet
    * @returns {string}
    */
   formatTweet(tweet) {
     let output = `@${tweet.author.screen_name}: ${tweet.text}`;
 
     // Handle Media
-    if (tweet.media && tweet.media.photos) {
-      tweet.media.photos.forEach((photo) => {
-        output += `\n${photo.url}`;
+    if (tweet.media && tweet.media.all) {
+      tweet.media.all.forEach((item) => {
+        if (item.url) output += `\n${item.url}`;
       });
     }
 
     if (tweet.quote) {
       output += `\n[Quoting @${tweet.quote.author.screen_name}]: ${tweet.quote.text}`;
-      if (tweet.quote.media && tweet.quote.media.photos) {
-        tweet.quote.media.photos.forEach((photo) => {
-          output += `\n${photo.url}`;
+      if (tweet.quote.media && tweet.quote.media.all) {
+        tweet.quote.media.all.forEach((item) => {
+          if (item.url) output += `\n${item.url}`;
         });
       }
     }

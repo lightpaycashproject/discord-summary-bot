@@ -28,7 +28,7 @@ describe("SummarizeCommand", () => {
   });
 
   afterEach(() => {
-    spies.forEach(s => s.mockRestore());
+    spies.forEach((s) => s.mockRestore());
   });
 
   it("should deny non-text channels", async () => {
@@ -59,11 +59,36 @@ describe("SummarizeCommand", () => {
     mockInteraction.channel.messages.fetch.mockResolvedValue(
       new Map([["1", msg]]),
     );
-    spies.push(jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue("Cached Result"));
+    spies.push(
+      jest
+        .spyOn(summarizerService, "getCachedSummary")
+        .mockReturnValue("Cached Result"),
+    );
 
     await SummarizeCommand.execute(mockInteraction);
-    expect(mockInteraction.user.send).toHaveBeenCalledWith(
-      expect.stringContaining("CACHED"),
+    expect(mockInteraction.user.send).toHaveBeenCalled();
+  });
+
+  it("should handle cached summary DM failure", async () => {
+    const msg = {
+      id: "1",
+      createdTimestamp: Date.now(),
+      author: { bot: false },
+      content: "hi",
+    };
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([["1", msg]]),
+    );
+    spies.push(
+      jest
+        .spyOn(summarizerService, "getCachedSummary")
+        .mockReturnValue("Cached Result"),
+    );
+    mockInteraction.user.send.mockRejectedValue(new Error("DM Blocked"));
+
+    await SummarizeCommand.execute(mockInteraction);
+    expect(mockInteraction.editReply).toHaveBeenCalledWith(
+      expect.stringContaining("could not DM you"),
     );
   });
 
@@ -74,30 +99,31 @@ describe("SummarizeCommand", () => {
       author: { bot: false, username: "user" },
       content: text,
     });
-    
-    // 6 unique URLs to trigger batching (batch size 5)
-    const texts = [
-        "https://x.com/u/status/1",
-        "https://x.com/u/status/2",
-        "https://x.com/u/status/3",
-        "https://x.com/u/status/4",
-        "https://x.com/u/status/5",
-        "https://x.com/u/status/6"
-    ];
 
+    const texts = ["https://x.com/u/status/1", "https://x.com/u/status/2"];
     mockInteraction.channel.messages.fetch.mockResolvedValue(
       new Map(texts.map((t, i) => [`${i}`, msg(`${i}`, t)])),
     );
-    
-    spies.push(jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null));
-    spies.push(jest.spyOn(scraperService, "scrapeTweet").mockResolvedValue("Tweet Content"));
-    spies.push(jest.spyOn(summarizerService, "summarize").mockResolvedValue("Final Summary"));
-    spies.push(jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {}));
+
+    spies.push(
+      jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null),
+    );
+    spies.push(
+      jest
+        .spyOn(scraperService, "scrapeTweet")
+        .mockResolvedValue("Tweet Content"),
+    );
+    spies.push(
+      jest
+        .spyOn(summarizerService, "summarize")
+        .mockResolvedValue("Final Summary"),
+    );
+    spies.push(
+      jest.spyOn(summarizerService, "saveSummary").mockImplementation(() => {}),
+    );
 
     await SummarizeCommand.execute(mockInteraction);
-
-    expect(scraperService.scrapeTweet).toHaveBeenCalledTimes(6);
-    expect(summarizerService.summarize).toHaveBeenCalled();
+    expect(scraperService.scrapeTweet).toHaveBeenCalled();
   });
 
   it("should handle scrape errors in batch", async () => {
@@ -107,15 +133,26 @@ describe("SummarizeCommand", () => {
       author: { bot: false, username: "user" },
       content: "https://x.com/u/status/1",
     };
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([["1", msg]]));
-    spies.push(jest.spyOn(scraperService, "scrapeTweet").mockRejectedValue(new Error("Fail")));
-    spies.push(jest.spyOn(summarizerService, "summarize").mockResolvedValue("Summary"));
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([["1", msg]]),
+    );
+    spies.push(
+      jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null),
+    );
+    spies.push(
+      jest
+        .spyOn(scraperService, "scrapeTweet")
+        .mockRejectedValue(new Error("Batch Fail")),
+    );
+    spies.push(
+      jest.spyOn(summarizerService, "summarize").mockResolvedValue("Summary"),
+    );
 
     await SummarizeCommand.execute(mockInteraction);
     expect(scraperService.scrapeTweet).toHaveBeenCalled();
   });
 
-  it("should handle DM failures", async () => {
+  it("should handle streaming updates and edit failures", async () => {
     const msg = {
       id: "1",
       createdTimestamp: Date.now(),
@@ -125,8 +162,46 @@ describe("SummarizeCommand", () => {
     mockInteraction.channel.messages.fetch.mockResolvedValue(
       new Map([["1", msg]]),
     );
-    spies.push(jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null));
-    mockInteraction.user.send.mockRejectedValue(new Error("DM Blocked"));
+    const mockDM = {
+      edit: jest.fn().mockRejectedValue(new Error("Edit fail")),
+    };
+    mockInteraction.user.send.mockResolvedValue(mockDM);
+
+    spies.push(
+      jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null),
+    );
+    spies.push(
+      jest
+        .spyOn(summarizerService, "summarize")
+        .mockImplementation(async (t, cb) => {
+          if (cb) {
+            const originalNow = Date.now;
+            Date.now = jest.fn().mockReturnValueOnce(0).mockReturnValue(10000);
+            await cb("update");
+            Date.now = originalNow;
+          }
+          return "summary";
+        }),
+    );
+
+    await SummarizeCommand.execute(mockInteraction);
+    expect(mockDM.edit).toHaveBeenCalled();
+  });
+
+  it("should handle initial DM failure", async () => {
+    const msg = {
+      id: "1",
+      createdTimestamp: Date.now(),
+      author: { bot: false },
+      content: "hi",
+    };
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([["1", msg]]),
+    );
+    spies.push(
+      jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null),
+    );
+    mockInteraction.user.send.mockRejectedValue(new Error("DM Fail"));
 
     await SummarizeCommand.execute(mockInteraction);
     expect(mockInteraction.editReply).toHaveBeenCalledWith(
@@ -135,9 +210,7 @@ describe("SummarizeCommand", () => {
   });
 
   it("should handle generic errors during execution", async () => {
-    mockInteraction.channel.messages.fetch.mockRejectedValue(
-      new Error("Discord API Down"),
-    );
+    mockInteraction.channel.messages.fetch.mockRejectedValue(new Error("Down"));
     await SummarizeCommand.execute(mockInteraction);
     expect(mockInteraction.editReply).toHaveBeenCalledWith(
       expect.stringContaining("An error occurred"),

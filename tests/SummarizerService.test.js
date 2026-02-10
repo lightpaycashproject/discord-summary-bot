@@ -83,8 +83,10 @@ describe("SummarizerService with Caching", () => {
     const spy = jest
       .spyOn(SummarizerService.openRouter.chat, "send")
       .mockRejectedValue(new Error("API Fail"));
-    
-    await expect(SummarizerService.summarize("content")).rejects.toThrow("API Fail");
+
+    await expect(SummarizerService.summarize("content")).rejects.toThrow(
+      "API Fail",
+    );
     spy.mockRestore();
   });
 
