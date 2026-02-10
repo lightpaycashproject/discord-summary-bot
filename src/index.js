@@ -8,6 +8,7 @@ const {
 const config = require("../config");
 const summarizeCommand = require("./commands/SummarizeCommand");
 const adminCommand = require("./commands/AdminCommand");
+const helpCommand = require("./commands/HelpCommand");
 
 const client = new Client({
   intents: [
@@ -22,6 +23,7 @@ const client = new Client({
 client.commands = new Collection();
 client.commands.set(summarizeCommand.data.name, summarizeCommand);
 client.commands.set(adminCommand.data.name, adminCommand);
+client.commands.set(helpCommand.data.name, helpCommand);
 
 client.once(Events.ClientReady, (c) => {
   console.log(`Ready! Logged in as ${c.user.tag}`);
