@@ -9,17 +9,15 @@ module.exports = {
     .setDescription('Summarizes the recent conversation in the channel and DMs the result.'),
   
   async execute(interaction) {
-    // Determine channel to fetch from (default to current or specified)
     const channel = interaction.channel;
     
-    if (!channel.isText()) {
+    if (!channel.isTextBased()) {
       return interaction.reply({ content: 'I can only summarize text channels!', ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
 
     try {
-      // Fetch messages
       const limit = summarize.limit || 50;
       const messages = await channel.messages.fetch({ limit });
       
@@ -27,11 +25,9 @@ module.exports = {
       const processedMessages = Array.from(messages.values()).reverse();
 
       for (const msg of processedMessages) {
-        if (msg.author.bot) continue; // Skip bot messages
+        if (msg.author.bot) continue;
 
         let content = msg.content;
-        
-        // Detect X.com / Twitter links
         const urlRegex = /(https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[a-zA-Z0-9_]+\/status\/\d+)/g;
         const matches = content.match(urlRegex);
 
@@ -53,17 +49,34 @@ module.exports = {
         return interaction.editReply('No conversation found to summarize.');
       }
 
-      // Generate Summary
-      const summary = await summarizerService.summarize(conversationText);
-
-      // Send via DM
+      // Initial DM to the user
+      let dmMessage;
       try {
-        await interaction.user.send(`**Conversation Summary for #${channel.name}**\n\n${summary}`);
-        await interaction.editReply('Summary sent to your DMs!');
+        dmMessage = await interaction.user.send(`⌛ **Generating summary for #${channel.name}...**`);
+        await interaction.editReply('Summary is being streamed to your DMs!');
       } catch (dmError) {
         console.error('Failed to DM user:', dmError);
-        await interaction.editReply('I could not send you a DM. Please check your privacy settings.');
+        return interaction.editReply('I could not send you a DM. Please check your privacy settings.');
       }
+
+      // Streaming setup
+      let lastUpdateTime = Date.now();
+      const UPDATE_INTERVAL = 1500; // 1.5 seconds to respect rate limits
+
+      const summary = await summarizerService.summarize(conversationText, async (currentFullText) => {
+        const now = Date.now();
+        if (now - lastUpdateTime > UPDATE_INTERVAL) {
+          lastUpdateTime = now;
+          try {
+            await dmMessage.edit(`**Conversation Summary for #${channel.name}**\n\n${currentFullText} ▌`);
+          } catch (e) {
+            console.error('Failed to update DM:', e.message);
+          }
+        }
+      });
+
+      // Final update
+      await dmMessage.edit(`**Conversation Summary for #${channel.name}**\n\n${summary}`);
 
     } catch (error) {
       console.error('Error in summarize command:', error);
