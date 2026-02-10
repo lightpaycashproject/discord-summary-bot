@@ -47,17 +47,20 @@ describe("DatabaseService", () => {
     expect(stats.modelStats.length).toBeGreaterThan(0);
   });
 
-  it("should track usage stats", () => {
-    dbService.logUsage("u1", "g1", "c1", 100, 0.001, "gpt-4");
-    expect(dbService.getDetailedStats().totalCost).toBeGreaterThan(0);
+  it("should get top users by cost", () => {
+    dbService.db.query("DELETE FROM usage_stats").run();
+    dbService.logUsage("u1", "g1", "c1", 100, 0.01, "m1");
+    dbService.logUsage("u2", "g1", "c1", 200, 0.02, "m1");
+    const stats = dbService.getDetailedStats();
+    expect(stats.topUsers[0].user_id).toBe("u2");
   });
 
-  it("should get top users and guilds", () => {
-    dbService.logUsage("user1", "guild1", "chan1", 100, 0.01, "gpt-4");
-    dbService.logUsage("user2", "guild2", "chan1", 200, 0.02, "gpt-4");
+  it("should get top guilds by cost", () => {
+    dbService.db.query("DELETE FROM usage_stats").run();
+    dbService.logUsage("u1", "g1", "c1", 100, 0.01, "m1");
+    dbService.logUsage("u1", "g2", "c1", 200, 0.02, "m1");
     const stats = dbService.getDetailedStats();
-    expect(stats.topUsers.length).toBeGreaterThan(0);
-    expect(stats.topGuilds.length).toBeGreaterThan(0);
+    expect(stats.topGuilds[0].guild_id).toBe("g2");
   });
 
   it("should handle error in version 2 migration columns", () => {

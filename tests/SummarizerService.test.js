@@ -27,6 +27,20 @@ describe("SummarizerService", () => {
     expect(result.summary).toBe("Res");
   });
 
+  it("should include usage/model even when response.model is missing", async () => {
+    const mockRes = {
+      choices: [{ message: { content: "Res" } }],
+      usage: { total_tokens: 10 },
+      model: undefined,
+    };
+    jest
+      .spyOn(SummarizerService.openRouter.chat, "send")
+      .mockResolvedValue(mockRes);
+    const result = await SummarizerService.summarize("C");
+    expect(result.model).toBeDefined();
+    expect(result.usage.total_tokens).toBe(10);
+  });
+
   it("should handle streaming summary and filter <think> tags", async () => {
     const mockStream = [
       { choices: [{ delta: { content: "H " } }] },
