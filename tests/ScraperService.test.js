@@ -2,7 +2,6 @@ const axios = require("axios");
 const db = require("../src/services/DatabaseService");
 const ScraperService = require("../src/services/ScraperService");
 
-// Manually spy on axios and db
 axios.get = jest.fn();
 
 describe("ScraperService with Caching", () => {
@@ -81,6 +80,80 @@ describe("ScraperService with Caching", () => {
     spySave.mockRestore();
   });
 
+  it("should handle partial thread failure in fetchThread", async () => {
+    const spyGet = jest.spyOn(db, "getCachedTweet").mockReturnValue(null);
+    const tweet = {
+      author: { screen_name: "u" },
+      text: "T",
+      replying_to_status: "1",
+    };
+    axios.get
+      .mockResolvedValueOnce({ data: { tweet: tweet } })
+      .mockRejectedValueOnce(new Error("Network fail"));
+
+    const result = await ScraperService.scrapeTweet("https://x.com/u/status/2");
+    expect(result).toContain("@u: T");
+    spyGet.mockRestore();
+  });
+
+  it("should handle the real-world example with quotes correctly", async () => {
+    const spyGet = jest.spyOn(db, "getCachedTweet").mockReturnValue(null);
+    const spySave = jest.spyOn(db, "saveTweet").mockImplementation(() => {});
+
+    const mockTweet = {
+      author: { screen_name: "derteil00" },
+      text: "I waited for them to tweet...",
+      quote: {
+        author: { screen_name: "saylor" },
+        text: "Strategy has acquired 1,142 BTC...",
+      },
+    };
+    axios.get.mockResolvedValue({ data: { tweet: mockTweet } });
+
+    const result = await ScraperService.scrapeTweet(
+      "https://x.com/derteil00/status/2020857102021914803",
+    );
+
+    expect(result).toContain("@derteil00");
+    expect(result).toContain("I waited for them");
+    expect(result).toContain("[Quoting @saylor]: Strategy has acquired");
+
+    spyGet.mockRestore();
+    spySave.mockRestore();
+  });
+
+  it("should include media images in formatting", () => {
+    const tweet = {
+      author: { screen_name: "user" },
+      text: "Look at this",
+      media: {
+        photos: [
+          { url: "https://x.com/img1.jpg" },
+          { url: "https://x.com/img2.jpg" },
+        ],
+      },
+    };
+    const output = ScraperService.formatTweet(tweet);
+    expect(output).toContain("https://x.com/img1.jpg");
+    expect(output).toContain("https://x.com/img2.jpg");
+  });
+
+  it("should include quoted tweet media", () => {
+    const tweet = {
+      author: { screen_name: "user" },
+      text: "Check this quote",
+      quote: {
+        author: { screen_name: "quoted" },
+        text: "Quoted text",
+        media: {
+          photos: [{ url: "https://x.com/quote_img.jpg" }],
+        },
+      },
+    };
+    const output = ScraperService.formatTweet(tweet);
+    expect(output).toContain("https://x.com/quote_img.jpg");
+  });
+
   it("should handle API failures gracefully", async () => {
     const spyGet = jest.spyOn(db, "getCachedTweet").mockReturnValue(null);
     axios.get.mockRejectedValue(new Error("API Fail"));
@@ -98,9 +171,7 @@ describe("ScraperService with Caching", () => {
 
   it("should handle fatal errors in scrapeTweet", async () => {
     const originalFetch = ScraperService.fetchThread;
-    ScraperService.fetchThread = jest
-      .fn()
-      .mockRejectedValue(new Error("Fatal"));
+    ScraperService.fetchThread = jest.fn().mockRejectedValue(new Error("Fatal"));
 
     const result = await ScraperService.scrapeTweet(
       "https://x.com/user/status/123",
@@ -108,15 +179,5 @@ describe("ScraperService with Caching", () => {
     expect(result).toContain("Error fetching tweet: Fatal");
 
     ScraperService.fetchThread = originalFetch;
-  });
-
-  it("should format tweets with quotes correctly", () => {
-    const tweet = {
-      author: { screen_name: "userA" },
-      text: "textA",
-      quote: { author: { screen_name: "userB" }, text: "textB" },
-    };
-    const output = ScraperService.formatTweet(tweet);
-    expect(output).toContain("Quoting @userB");
   });
 });

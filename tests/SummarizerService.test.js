@@ -83,8 +83,13 @@ describe("SummarizerService with Caching", () => {
     const spy = jest
       .spyOn(SummarizerService.openRouter.chat, "send")
       .mockRejectedValue(new Error("API Fail"));
-    const summary = await SummarizerService.summarize("content");
-    expect(summary).toBe("Failed to generate summary due to an API error.");
+    
+    await expect(SummarizerService.summarize("content")).rejects.toThrow("API Fail");
     spy.mockRestore();
+  });
+
+  it("should return message for empty content", async () => {
+    const result = await SummarizerService.summarize("");
+    expect(result).toBe("No content to summarize.");
   });
 });

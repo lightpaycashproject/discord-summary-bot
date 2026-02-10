@@ -24,7 +24,7 @@ Your goal is to provide a highly readable, structured summary using full Discord
 CRITICAL INSTRUCTIONS:
 1. **User Contributions**: In the ## 👤 User Contributions section, briefly list what each significant participant contributed to the discussion.
 2. **Alpha & Projects**: Pay special attention to any "alpha", crypto signals, price discussions, new project mentions, or technical leaks. Highlight these in the ## 💎 Alpha & Crypto News section.
-3. **X.com Context**: Integrate the provided X.com/Twitter thread context into the relevant sections.
+3. **X.com Context**: Integrate the provided X.com/Twitter thread context into the relevant sections. Always include image URLs provided in the context so they embed in the final summary.
 
 IMPORTANT: Wrap internal reasoning in <think> tags. The final output must NOT contain these tags.`;
   }
@@ -113,7 +113,7 @@ IMPORTANT: Wrap internal reasoning in <think> tags. The final output must NOT co
       }
     } catch (error) {
       console.error("Error summarizing content:", error.message);
-      return "Failed to generate summary due to an API error.";
+      throw error; // Rethrow to handle it in the command or test
     }
   }
 }

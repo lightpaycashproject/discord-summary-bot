@@ -66,7 +66,8 @@ class ScraperService {
         }
       }
       return thread;
-    } catch {
+    } catch (e) {
+      console.error(`Thread fetch error for ${tweetId}:`, e.message);
       // If we hit an error fetching a parent, just return what we have
       return thread;
     }
@@ -74,14 +75,26 @@ class ScraperService {
 
   /**
    * Formats a tweet object into a readable string.
-   * @param {Object} tweet
+   * @param {Object} tweet 
    * @returns {string}
    */
   formatTweet(tweet) {
     let output = `@${tweet.author.screen_name}: ${tweet.text}`;
 
+    // Handle Media
+    if (tweet.media && tweet.media.photos) {
+      tweet.media.photos.forEach((photo) => {
+        output += `\n${photo.url}`;
+      });
+    }
+
     if (tweet.quote) {
       output += `\n[Quoting @${tweet.quote.author.screen_name}]: ${tweet.quote.text}`;
+      if (tweet.quote.media && tweet.quote.media.photos) {
+        tweet.quote.media.photos.forEach((photo) => {
+          output += `\n${photo.url}`;
+        });
+      }
     }
 
     return output;

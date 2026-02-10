@@ -1,10 +1,9 @@
 let Database;
-if (typeof Bun !== "undefined") {
+const isBun = typeof Bun !== "undefined";
+
+if (isBun) {
   Database = require("bun:sqlite").Database;
 } else {
-  // Use a string to hide it from Bun's parser if needed,
-  // but usually just wrapping in the conditional is enough.
-  // We'll use dynamic import for Node to be safe.
   Database = require("better-sqlite3");
 }
 
@@ -17,45 +16,40 @@ class DatabaseService {
   }
 
   init() {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS scraped_data (
+    const schemas = [
+      `CREATE TABLE IF NOT EXISTS scraped_data (
         url TEXT PRIMARY KEY,
         content TEXT,
         timestamp INTEGER
-      )
-    `);
-
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS summaries (
+      )`,
+      `CREATE TABLE IF NOT EXISTS summaries (
         channel_id TEXT PRIMARY KEY,
         last_message_id TEXT,
         summary_text TEXT,
         timestamp INTEGER
-      )
-    `);
+      )`,
+    ];
+    schemas.forEach((s) => this.db.exec(s));
   }
 
   getCachedTweet(url) {
-    if (typeof Bun !== "undefined") {
-      const stmt = this.db.query(
-        "SELECT content FROM scraped_data WHERE url = $url",
-      );
-      const row = stmt.get({ $url: url });
-      return row ? row : null;
-    } else {
-      const row = this.db
-        .prepare("SELECT content FROM scraped_data WHERE url = ?")
-        .get(url);
-      return row ? row : null;
+    if (isBun) {
+      return this.db
+        .query("SELECT content FROM scraped_data WHERE url = $url")
+        .get({ $url: url });
     }
+    return this.db
+      .prepare("SELECT content FROM scraped_data WHERE url = ?")
+      .get(url);
   }
 
   saveTweet(url, content) {
-    if (typeof Bun !== "undefined") {
-      const stmt = this.db.query(
-        "INSERT OR REPLACE INTO scraped_data (url, content, timestamp) VALUES ($url, $content, $timestamp)",
-      );
-      stmt.run({ $url: url, $content: content, $timestamp: Date.now() });
+    if (isBun) {
+      this.db
+        .query(
+          "INSERT OR REPLACE INTO scraped_data (url, content, timestamp) VALUES ($url, $content, $timestamp)",
+        )
+        .run({ $url: url, $content: content, $timestamp: Date.now() });
     } else {
       this.db
         .prepare(
@@ -67,33 +61,34 @@ class DatabaseService {
 
   getCachedSummary(channelId, lastMessageId) {
     let row;
-    if (typeof Bun !== "undefined") {
-      const stmt = this.db.query(
-        "SELECT summary_text, timestamp FROM summaries WHERE channel_id = $channelId AND last_message_id = $lastMessageId",
-      );
-      row = stmt.get({ $channelId: channelId, $lastMessageId: lastMessageId });
+    if (isBun) {
+      row = this.db
+        .query(
+          "SELECT summary_text FROM summaries WHERE channel_id = $channelId AND last_message_id = $lastMessageId",
+        )
+        .get({ $channelId: channelId, $lastMessageId: lastMessageId });
     } else {
       row = this.db
         .prepare(
-          "SELECT summary_text, timestamp FROM summaries WHERE channel_id = ? AND last_message_id = ?",
+          "SELECT summary_text FROM summaries WHERE channel_id = ? AND last_message_id = ?",
         )
         .get(channelId, lastMessageId);
     }
-
     return row ? row.summary_text : null;
   }
 
   saveSummary(channelId, lastMessageId, summaryText) {
-    if (typeof Bun !== "undefined") {
-      const stmt = this.db.query(
-        "INSERT OR REPLACE INTO summaries (channel_id, last_message_id, summary_text, timestamp) VALUES ($channelId, $lastMessageId, $summaryText, $timestamp)",
-      );
-      stmt.run({
-        $channelId: channelId,
-        $lastMessageId: lastMessageId,
-        $summaryText: summaryText,
-        $timestamp: Date.now(),
-      });
+    if (isBun) {
+      this.db
+        .query(
+          "INSERT OR REPLACE INTO summaries (channel_id, last_message_id, summary_text, timestamp) VALUES ($channelId, $lastMessageId, $summaryText, $timestamp)",
+        )
+        .run({
+          $channelId: channelId,
+          $lastMessageId: lastMessageId,
+          $summaryText: summaryText,
+          $timestamp: Date.now(),
+        });
     } else {
       this.db
         .prepare(
@@ -104,7 +99,7 @@ class DatabaseService {
   }
 
   clearChannelCache(channelId) {
-    if (typeof Bun !== "undefined") {
+    if (isBun) {
       this.db
         .query("DELETE FROM summaries WHERE channel_id = $channelId")
         .run({ $channelId: channelId });
@@ -117,7 +112,7 @@ class DatabaseService {
 
   getStats() {
     let tweets, summaries;
-    if (typeof Bun !== "undefined") {
+    if (isBun) {
       tweets = this.db
         .query("SELECT COUNT(*) as count FROM scraped_data")
         .get().count;
