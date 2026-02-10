@@ -1,3 +1,4 @@
+const { expect, it, describe } = require("bun:test");
 const dbService = require("../src/services/DatabaseService");
 
 describe("DatabaseService", () => {
@@ -9,8 +10,7 @@ describe("DatabaseService", () => {
 
   it("should return null or undefined for missing tweet", () => {
     const row = dbService.getCachedTweet("https://x.com/missing");
-    // We'll accept null or undefined based on driver
-    expect(row).toBeFalsy();
+    expect(row).toBeNull();
   });
 
   it("should save and retrieve a summary", () => {

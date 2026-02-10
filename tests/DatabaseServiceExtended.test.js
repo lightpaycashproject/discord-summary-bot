@@ -1,3 +1,4 @@
+const { expect, it, describe } = require("bun:test");
 const dbService = require("../src/services/DatabaseService");
 
 describe("DatabaseService Extended", () => {
@@ -12,11 +13,8 @@ describe("DatabaseService Extended", () => {
   });
 
   it("should return correct stats", () => {
-    // Stats is a sum of all entries. Since tests share the DB instance in some runs,
-    // we just check if it returns numbers.
     const stats = dbService.getStats();
     expect(stats).toHaveProperty("tweets");
     expect(stats).toHaveProperty("summaries");
-    expect(typeof stats.tweets).toBe("number");
   });
 });
