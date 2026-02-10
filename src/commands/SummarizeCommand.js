@@ -162,7 +162,7 @@ module.exports = {
         `**Conversation Summary for #${channel.name} (Last 24h)**\n\n${summary}`,
       );
     } catch (error) {
-      console.error("Error in summarize command:", error);
+      console.error("Error in summarize command:", error.message);
       await interaction.editReply(
         "An error occurred while generating the summary.",
       );
