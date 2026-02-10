@@ -77,6 +77,23 @@ class DatabaseService {
           });
         },
       },
+      {
+        version: 3,
+        run: () => {
+          this.db.exec(`CREATE TABLE IF NOT EXISTS messages (
+            id TEXT PRIMARY KEY,
+            channel_id TEXT,
+            guild_id TEXT,
+            user_id TEXT,
+            username TEXT,
+            content TEXT,
+            timestamp INTEGER
+          )`);
+          this.db.exec(
+            "CREATE INDEX IF NOT EXISTS idx_messages_channel_time ON messages (channel_id, timestamp)",
+          );
+        },
+      },
     ];
 
     migrations.forEach((m) => {
@@ -114,6 +131,30 @@ class DatabaseService {
         "INSERT OR REPLACE INTO scraped_data (url, content, timestamp) VALUES ($url, $content, $timestamp)",
       )
       .run({ $url: url, $content: content, $timestamp: Date.now() });
+  }
+
+  saveMessage(id, channelId, guildId, userId, username, content, timestamp) {
+    this.db
+      .query(
+        "INSERT OR REPLACE INTO messages (id, channel_id, guild_id, user_id, username, content, timestamp) VALUES ($id, $channelId, $guildId, $userId, $username, $content, $timestamp)",
+      )
+      .run({
+        $id: id,
+        $channelId: channelId,
+        $guildId: guildId,
+        $userId: userId,
+        $username: username,
+        $content: content,
+        $timestamp: timestamp,
+      });
+  }
+
+  getMessages(channelId, startTime) {
+    return this.db
+      .query(
+        "SELECT * FROM messages WHERE channel_id = $channelId AND timestamp >= $startTime ORDER BY timestamp ASC",
+      )
+      .all({ $channelId: channelId, $startTime: startTime });
   }
 
   getCachedSummary(channelId, lastMessageId) {
@@ -211,13 +252,14 @@ class DatabaseService {
       )
       .get();
 
-    return {
+    const result = {
       topUsers,
       topGuilds,
       modelStats,
-      totalTokens: (totals && totals.totalTokens) || 0,
-      totalCost: (totals && totals.totalCost) || 0,
+      totalTokens: totals?.totalTokens ?? 0,
+      totalCost: totals?.totalCost ?? 0,
     };
+    return result;
   }
 
   clearChannelCache(channelId) {

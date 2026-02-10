@@ -215,6 +215,11 @@ describe("ScraperService", () => {
 
       ScraperService.fetchThread = originalFetchThread;
     });
+
+    it("should return error for invalid URL in scrapeTweet", async () => {
+      const result = await ScraperService.scrapeTweet("invalid-url");
+      expect(result).toContain("Could not extract tweet ID");
+    });
   });
 
   describe("ScraperService Edge Cases", () => {

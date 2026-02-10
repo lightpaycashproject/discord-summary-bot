@@ -115,6 +115,36 @@ describe("DatabaseService", () => {
     expect(stats.totalCost).toBe(0);
   });
 
+  it("should handle error in version 2 migration columns", () => {
+    // Force version to 1 so version 2 migration runs
+    dbService.setSchemaVersion(1);
+    
+    // Mock exec to throw for ALTER TABLE
+    const originalExec = dbService.db.exec.bind(dbService.db);
+    const spy = jest.spyOn(dbService.db, "exec").mockImplementation((sql) => {
+      if (sql.startsWith("ALTER TABLE")) {
+        throw new Error("already exists");
+      }
+      return originalExec(sql);
+    });
+
+    expect(() => dbService.init()).not.toThrow();
+    spy.mockRestore();
+  });
+
+  it("should handle stats when query returns null", () => {
+    const mockQuery = {
+      all: () => [],
+      get: () => null,
+      run: () => {},
+    };
+    const spy = jest.spyOn(dbService.db, "query").mockReturnValue(mockQuery);
+    const stats = dbService.getDetailedStats();
+    expect(stats.totalTokens).toBe(0);
+    expect(stats.totalCost).toBe(0);
+    spy.mockRestore();
+  });
+
   it("should track schema version", () => {
     const version = dbService.getSchemaVersion();
     expect(version).toBeGreaterThan(0);
@@ -125,7 +155,7 @@ describe("DatabaseService", () => {
 
   it("should not run migrations if version is already current", () => {
     const spy = jest.spyOn(dbService.db, "exec");
-    dbService.setSchemaVersion(2);
+    dbService.setSchemaVersion(3);
     dbService.init();
     // Only schema_meta should be created
     const createTableCalls = spy.mock.calls.filter((c) =>
@@ -152,5 +182,16 @@ describe("DatabaseService", () => {
     Date.now = originalNow;
     const result = dbService.getRecentSummary("old_chan", 5000);
     expect(result).toBeNull();
+  });
+
+  it("should save and retrieve messages", () => {
+    const now = Date.now();
+    dbService.saveMessage("m1", "c1", "g1", "u1", "user1", "Hello", now);
+    dbService.saveMessage("m2", "c1", "g1", "u2", "user2", "World", now + 1000);
+
+    const messages = dbService.getMessages("c1", now);
+    expect(messages.length).toBe(2);
+    expect(messages[0].content).toBe("Hello");
+    expect(messages[1].content).toBe("World");
   });
 });

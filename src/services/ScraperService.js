@@ -1,3 +1,5 @@
+const db = require("./DatabaseService");
+
 class ScraperService {
   /**
    * Scrapes tweet content from a given URL using FixTweet (fxtwitter) API.
@@ -6,9 +8,6 @@ class ScraperService {
    * @returns {Promise<string>} - The text content of the tweet including quotes and thread.
    */
   async scrapeTweet(url) {
-    // DatabaseService is required dynamically to avoid circular dependency if any
-    const db = require("./DatabaseService");
-
     // Check Cache
     const cached = db.getCachedTweet(url);
     if (cached) return cached.content;

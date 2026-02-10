@@ -46,6 +46,7 @@ describe("SummarizeCommand", () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
     jest.spyOn(console, "log").mockImplementation(() => {});
     jest.spyOn(dbService, "getRecentSummary").mockReturnValue(null);
+    jest.spyOn(dbService, "getMessages").mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -114,6 +115,58 @@ describe("SummarizeCommand", () => {
 
     expect(mockInteraction.user.send).toHaveBeenCalledWith(
       expect.stringContaining("[FRESH]"),
+    );
+  });
+
+  it("should use local message log if available", async () => {
+    const localMsgs = [
+      {
+        id: "1",
+        username: "user1",
+        content: "Hello from local",
+        timestamp: Date.now(),
+      },
+    ];
+    dbService.getMessages.mockReturnValue(localMsgs);
+
+    const mockDM = { edit: jest.fn() };
+    mockInteraction.user.send.mockResolvedValue(mockDM);
+
+    spies.push(
+      jest.spyOn(summarizerService, "summarize").mockResolvedValue({
+        summary: "Local Summary",
+        usage: { total_tokens: 5, total_cost: 0.001 },
+        model: "m",
+      }),
+    );
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    // Verify status message mentions local log
+    const statusCall = mockInteraction.user.send.mock.calls.find((c) =>
+      c[0].includes("Using local message log"),
+    );
+    expect(statusCall).toBeDefined();
+
+    // Verify summarize was called with local content
+    expect(summarizerService.summarize).toHaveBeenCalledWith(
+      expect.stringContaining("Hello from local"),
+      expect.any(Function),
+    );
+  });
+
+  it("should mention local log in cached reply", async () => {
+    dbService.getMessages.mockReturnValue([
+      { id: "1", username: "u", content: "c", timestamp: Date.now() },
+    ]);
+    jest
+      .spyOn(summarizerService, "getCachedSummary")
+      .mockReturnValue("Cached Result");
+
+    await SummarizeCommand.execute(mockInteraction);
+
+    expect(mockInteraction.editReply).toHaveBeenCalledWith(
+      expect.stringContaining("from local log"),
     );
   });
 

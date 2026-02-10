@@ -11,6 +11,7 @@ const summarizeCommand = require("./commands/SummarizeCommand");
 const adminCommand = require("./commands/AdminCommand");
 const helpCommand = require("./commands/HelpCommand");
 const scraperService = require("./services/ScraperService");
+const db = require("./services/DatabaseService");
 
 // Validate environment variables before starting
 try {
@@ -43,14 +44,29 @@ client.once(Events.ClientReady, (c) => {
   // Initialize scraper (launch browser if needed, though now using API)
 });
 
-// Proactive Scraper: Pre-cache X/Twitter links as they appear
+// Proactive Scraper & Message Logger
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
 
+  // 1. Log message to database
+  try {
+    db.saveMessage(
+      message.id,
+      message.channelId,
+      message.guildId,
+      message.author.id,
+      message.author.username,
+      message.content,
+      message.createdTimestamp,
+    );
+  } catch (e) {
+    console.error(`Failed to log message ${message.id}:`, e.message);
+  }
+
+  // 2. Pre-cache X/Twitter links
   const matches = message.content.match(urlRegex);
   if (matches) {
     for (const url of matches) {
-      // Scrape in background (catch errors so bot doesn't crash)
       scraperService.scrapeTweet(url).catch((e) => {
         console.error(`Proactive scrape failed for ${url}:`, e.message);
       });

@@ -70,31 +70,48 @@ module.exports = {
       const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
       const startTime = Date.now() - TWENTY_FOUR_HOURS;
 
-      let allMessages = [];
-      let lastId = null;
+      // 1. Try to fetch from Local Database first
+      let processedMessages = db.getMessages(channel.id, startTime);
+      let usedLocal = processedMessages.length > 0;
 
-      // 1. Fetch messages from last 24 hours (Infinite loop safety: max 10,000 messages)
-      while (true) {
-        const fetchOptions = { limit: 100 };
-        if (lastId) fetchOptions.before = lastId;
+      // 2. If local is empty, fallback to Discord API (for first-time use)
+      if (processedMessages.length === 0) {
+        let allMessages = [];
+        let lastId = null;
 
-        const fetched = await channel.messages.fetch(fetchOptions);
-        if (fetched.size === 0) break;
+        while (true) {
+          const fetchOptions = { limit: 100 };
+          if (lastId) fetchOptions.before = lastId;
 
-        const filtered = Array.from(fetched.values());
-        allMessages.push(...filtered);
+          const fetched = await channel.messages.fetch(fetchOptions);
+          if (fetched.size === 0) break;
 
-        lastId = filtered[filtered.length - 1].id;
+          const filtered = Array.from(fetched.values());
+          allMessages.push(...filtered);
 
-        // Stop if we've gone past the 24-hour mark
-        if (filtered[filtered.length - 1].createdTimestamp < startTime) break;
-        // Safety break for extremely active channels
-        if (allMessages.length > 10000) break;
+          lastId = filtered[filtered.length - 1].id;
+          if (filtered[filtered.length - 1].createdTimestamp < startTime) break;
+          if (allMessages.length > 10000) break;
+        }
+
+        processedMessages = allMessages
+          .filter((m) => m.createdTimestamp >= startTime && !m.author.bot)
+          .map((m) => ({
+            id: m.id,
+            username: m.author.username,
+            content: m.content,
+            createdTimestamp: m.createdTimestamp,
+          }))
+          .reverse();
+      } else {
+        // Map local format to match the internal processing logic
+        processedMessages = processedMessages.map((m) => ({
+          id: m.id,
+          username: m.username,
+          content: m.content,
+          createdTimestamp: m.timestamp,
+        }));
       }
-
-      const processedMessages = allMessages
-        .filter((m) => m.createdTimestamp >= startTime && !m.author.bot)
-        .reverse();
 
       if (processedMessages.length === 0) {
         return interaction.editReply(
@@ -114,7 +131,11 @@ module.exports = {
           await interaction.user.send(
             `**[FRESH] Conversation Summary for #${channel.name} (Last 24h)**\n\n${cachedSummary}`,
           );
-          return interaction.editReply("Sent a fresh summary to your DMs!");
+          return interaction.editReply(
+            usedLocal
+              ? "Sent a fresh summary (from local log) to your DMs!"
+              : "Sent a fresh summary to your DMs!",
+          );
         } catch (dmError) {
           console.error("Failed to DM cached summary:", dmError.message);
           return interaction.editReply(
@@ -168,6 +189,7 @@ module.exports = {
       let dmMessage;
       try {
         let statusMsg = `⌛ **Generating summary for #${channel.name} (Last 24h)...**`;
+        if (usedLocal) statusMsg += "\n⚡ *Using local message log.*";
         if (scrapeFailures > 0) {
           statusMsg += `\n⚠️ *Note: ${scrapeFailures} Twitter link(s) could not be fully scraped.*`;
         }
@@ -191,7 +213,7 @@ module.exports = {
             if (context) content += `\n[Tweet Context: ${context}]`;
           });
         }
-        conversationText += `${msg.author.username}: ${content}\n`;
+        conversationText += `${msg.username}: ${content}\n`;
       }
 
       // 6. Summarize with Streaming using helper class
