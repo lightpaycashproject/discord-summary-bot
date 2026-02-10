@@ -2,7 +2,51 @@ const { SlashCommandBuilder } = require("discord.js");
 const scraperService = require("../services/ScraperService");
 const summarizerService = require("../services/SummarizerService");
 
+/**
+ * Helper class for managing stream updates to DMs.
+ * Extracted for testability.
+ */
+class StreamUpdateHelper {
+  constructor(dmMessage, channelName, updateInterval = 1500) {
+    this.dmMessage = dmMessage;
+    this.channelName = channelName;
+    this.lastUpdateTime = Date.now();
+    this.updateInterval = updateInterval;
+  }
+
+  /**
+   * Attempts to update the DM message if the update interval has passed.
+   * @param {string} currentFullText - The current summary text
+   * @returns {Promise<void>}
+   */
+  async maybeUpdate(currentFullText) {
+    const now = Date.now();
+    if (now - this.lastUpdateTime > this.updateInterval) {
+      this.lastUpdateTime = now;
+      await this.updateDM(currentFullText);
+    }
+  }
+
+  /**
+   * Updates the DM message with the current text.
+   * Handles errors gracefully.
+   * @param {string} currentFullText - The current summary text
+   * @returns {Promise<void>}
+   */
+  async updateDM(currentFullText) {
+    try {
+      await this.dmMessage.edit(
+        `**Conversation Summary for #${this.channelName} (Last 24h)**\n\n${currentFullText} ▌`,
+      );
+    } catch (e) {
+      console.error("Failed to update DM stream:", e.message);
+    }
+  }
+}
+
 module.exports = {
+  StreamUpdateHelper,
+
   data: new SlashCommandBuilder()
     .setName("summarize")
     .setDescription(
@@ -139,24 +183,13 @@ module.exports = {
         conversationText += `${msg.author.username}: ${content}\n`;
       }
 
-      // 6. Summarize with Streaming
-      let lastUpdateTime = Date.now();
-      const UPDATE_INTERVAL = 1500;
+      // 6. Summarize with Streaming using helper class
+      const streamHelper = new StreamUpdateHelper(dmMessage, channel.name);
 
       const result = await summarizerService.summarize(
         conversationText,
         async (currentFullText) => {
-          const now = Date.now();
-          if (now - lastUpdateTime > UPDATE_INTERVAL) {
-            lastUpdateTime = now;
-            try {
-              await dmMessage.edit(
-                `**Conversation Summary for #${channel.name} (Last 24h)**\n\n${currentFullText} ▌`,
-              );
-            } catch (e) {
-              console.error("Failed to update DM stream:", e.message);
-            }
-          }
+          await streamHelper.maybeUpdate(currentFullText);
         },
       );
 

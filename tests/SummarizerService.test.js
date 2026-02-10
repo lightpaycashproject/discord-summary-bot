@@ -31,6 +31,7 @@ describe("SummarizerService with Caching", () => {
     const result = await SummarizerService.summarize("Long content");
     expect(result.summary).toBe("Summary result");
     expect(result.usage.total_tokens).toBe(50);
+    expect(result.model).toBe("test-model");
     spy.mockRestore();
   });
 
