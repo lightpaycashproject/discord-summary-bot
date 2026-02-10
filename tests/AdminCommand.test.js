@@ -48,4 +48,13 @@ describe('AdminCommand', () => {
       content: expect.stringContaining('Cached Tweets: 10')
     }));
   });
+
+  it('should handle errors in clear-cache', async () => {
+    mockInteraction.options.getSubcommand.mockReturnValue('clear-cache');
+    db.clearChannelCache.mockImplementation(() => { throw new Error('DB error'); });
+    await AdminCommand.execute(mockInteraction);
+    expect(mockInteraction.reply).toHaveBeenCalledWith(expect.objectContaining({
+      content: expect.stringContaining('Failed to clear cache')
+    }));
+  });
 });

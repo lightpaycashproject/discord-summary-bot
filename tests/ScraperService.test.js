@@ -74,6 +74,17 @@ describe('ScraperService with Caching', () => {
     expect(result).toContain('Could not extract tweet ID');
   });
 
+  it('should handle fatal errors in scrapeTweet', async () => {
+    // Force the catch block by mocking fetchThread
+    const originalFetch = ScraperService.fetchThread;
+    ScraperService.fetchThread = jest.fn().mockRejectedValue(new Error('Fatal'));
+    
+    const result = await ScraperService.scrapeTweet('https://x.com/user/status/123');
+    expect(result).toContain('Error fetching tweet: Fatal');
+    
+    ScraperService.fetchThread = originalFetch;
+  });
+
   it('should format tweets with quotes correctly', () => {
     const tweet = { 
       author: { screen_name: 'userA' }, 
