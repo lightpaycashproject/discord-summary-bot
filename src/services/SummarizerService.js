@@ -1,10 +1,20 @@
-const axios = require('axios');
+const { OpenRouter } = require('@openrouter/sdk');
 const { llm } = require('../../config');
 
 class SummarizerService {
+  constructor() {
+    this.openRouter = new OpenRouter({
+      apiKey: llm.apiKey,
+      defaultHeaders: {
+        'HTTP-Referer': 'https://github.com/lightpaycashproject/discord-summary-bot',
+        'X-Title': 'Discord Summary Bot',
+      }
+    });
+  }
+
   /**
-   * Summarizes the provided content using the configured LLM API.
-   * @param {string} content - The text to summarize (includes scraped data).
+   * Summarizes the provided content using the OpenRouter SDK.
+   * @param {string} content - The text to summarize.
    * @returns {Promise<string>} - The summarized text.
    */
   async summarize(content) {
@@ -13,37 +23,28 @@ class SummarizerService {
     }
 
     try {
-      const response = await axios.post(
-        llm.baseURL + '/chat/completions',
-        {
-          model: llm.model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a helpful assistant that summarizes Discord chat logs. Provide a concise summary of the conversation, highlighting key topics, decisions, and any external links mentioned (especially tweets). Be brief and to the point.'
-            },
-            {
-              role: 'user',
-              content: `Summarize the following conversation:\n\n${content}`
-            }
-          ],
-          max_tokens: 500
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${llm.apiKey}`,
-            'Content-Type': 'application/json'
+      const response = await this.openRouter.chat.send({
+        model: llm.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful assistant that summarizes Discord chat logs. Provide a concise summary of the conversation, highlighting key topics, decisions, and any external links mentioned (especially tweets). Be brief and to the point.'
+          },
+          {
+            role: 'user',
+            content: `Summarize the following conversation:\n\n${content}`
           }
-        }
-      );
+        ],
+        stream: false
+      });
 
-      if (response.data && response.data.choices && response.data.choices.length > 0) {
-        return response.data.choices[0].message.content.trim();
+      if (response && response.choices && response.choices.length > 0) {
+        return response.choices[0].message.content.trim();
       } else {
-        throw new Error('Invalid response from LLM API');
+        throw new Error('Invalid response from OpenRouter SDK');
       }
     } catch (error) {
-      console.error('Error summarizing content:', error.response ? error.response.data : error.message);
+      console.error('Error summarizing content:', error.message);
       return 'Failed to generate summary due to an API error.';
     }
   }

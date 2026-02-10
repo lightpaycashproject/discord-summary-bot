@@ -1,75 +1,85 @@
-const puppeteer = require('puppeteer');
+const axios = require('axios');
 
 class ScraperService {
-  constructor() {
-    this.browser = null;
-  }
-
-  async init() {
-    if (!this.browser) {
-      this.browser = await puppeteer.launch({
-        headless: "new",
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
+  /**
+   * Scrapes tweet content from a given URL using FixTweet (fxtwitter) API.
+   * Handles threads by unrolling them and includes quoted tweet text.
+   * @param {string} url - The x.com or twitter.com URL.
+   * @returns {Promise<string>} - The text content of the tweet including quotes and thread.
+   */
+  async scrapeTweet(url) {
+    const tweetId = this.extractTweetId(url);
+    if (!tweetId) {
+      return `[Error: Could not extract tweet ID from ${url}]`;
     }
-  }
 
-  async close() {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
+    try {
+      const thread = await this.fetchThread(tweetId);
+      if (!thread || thread.length === 0) {
+        return `[Could not fetch tweet content for ID ${tweetId}]`;
+      }
+
+      return thread.map(t => this.formatTweet(t)).join('\n---\n');
+    } catch (error) {
+      console.error('Error scraping tweet:', error.message);
+      return `[Error fetching tweet: ${error.message}]`;
     }
   }
 
   /**
-   * Scrapes tweet content from a given URL.
-   * Uses Nitter as a proxy to avoid X.com login walls/rate limits.
-   * @param {string} url - The x.com or twitter.com URL.
-   * @returns {Promise<string>} - The text content of the tweet including quotes.
+   * Recursively fetches a thread starting from a tweet ID.
+   * @param {string} tweetId 
+   * @param {Array} thread 
+   * @returns {Promise<Array>}
    */
-  async scrapeTweet(url) {
-    if (!this.browser) await this.init();
-    
-    // Normalize URL to use a nitter instance for reliability
-    let targetUrl = url.replace('x.com', 'nitter.poast.org').replace('twitter.com', 'nitter.poast.org');
-    
-    // Simple check to ensure valid URL
+  async fetchThread(tweetId, thread = []) {
     try {
-      new URL(targetUrl);
-    } catch (e) {
-      console.error('Invalid URL:', url);
-      return `[Error: Invalid URL ${url}]`;
-    }
-
-    const page = await this.browser.newPage();
-    try {
-      await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-      
-      // Extract main tweet text
-      const tweetText = await page.evaluate(() => {
-        const content = document.querySelector('.main-tweet .tweet-content');
-        return content ? content.innerText : null;
+      const response = await axios.get(`https://api.fxtwitter.com/status/${tweetId}`, {
+        headers: { 'User-Agent': 'DiscordSummaryBot/1.0' }
       });
 
-      // Extract quote tweet text if present
-      const quoteText = await page.evaluate(() => {
-        const quote = document.querySelector('.main-tweet .quote .tweet-content');
-        return quote ? `[Quote Tweet]: ${quote.innerText}` : '';
-      });
+      if (response.data && response.data.tweet) {
+        const tweet = response.data.tweet;
+        thread.unshift(tweet); // Add to the beginning of the thread array
 
-      if (!tweetText) {
-          // Fallback: try scraping original domain if nitter fails or returns nothing
-          // This part is tricky without login, but included for completeness logic.
-          return `[Could not fetch tweet content from ${url}]`;
+        // If this tweet is a reply, fetch the parent
+        if (tweet.replying_to_status) {
+          // Limit thread depth to avoid infinite loops or massive payloads
+          if (thread.length < 10) {
+            return await this.fetchThread(tweet.replying_to_status, thread);
+          }
+        }
       }
-
-      return `Tweet: ${tweetText}\n${quoteText}`;
+      return thread;
     } catch (error) {
-      console.error('Error scraping tweet:', error);
-      return `[Error fetching tweet: ${error.message}]`;
-    } finally {
-      await page.close();
+      // If we hit an error fetching a parent, just return what we have
+      return thread;
     }
+  }
+
+  /**
+   * Formats a tweet object into a readable string.
+   * @param {Object} tweet 
+   * @returns {string}
+   */
+  formatTweet(tweet) {
+    let output = `@${tweet.author.screen_name}: ${tweet.text}`;
+    
+    if (tweet.quote) {
+      output += `\n[Quoting @${tweet.quote.author.screen_name}]: ${tweet.quote.text}`;
+    }
+    
+    return output;
+  }
+
+  /**
+   * Extracts the tweet ID from a URL.
+   * @param {string} url 
+   * @returns {string|null}
+   */
+  extractTweetId(url) {
+    const match = url.match(/status\/(\d+)/);
+    return match ? match[1] : null;
   }
 }
 
