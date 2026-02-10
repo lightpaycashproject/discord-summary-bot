@@ -1,4 +1,5 @@
 const axios = require('axios');
+const db = require('./DatabaseService');
 
 class ScraperService {
   /**
@@ -8,6 +9,10 @@ class ScraperService {
    * @returns {Promise<string>} - The text content of the tweet including quotes and thread.
    */
   async scrapeTweet(url) {
+    // Check Cache
+    const cached = db.getCachedTweet(url);
+    if (cached) return cached.content;
+
     const tweetId = this.extractTweetId(url);
     if (!tweetId) {
       return `[Error: Could not extract tweet ID from ${url}]`;
@@ -19,7 +24,12 @@ class ScraperService {
         return `[Could not fetch tweet content for ID ${tweetId}]`;
       }
 
-      return thread.map(t => this.formatTweet(t)).join('\n---\n');
+      const formattedContent = thread.map(t => this.formatTweet(t)).join('\n---\n');
+      
+      // Save to Cache
+      db.saveTweet(url, formattedContent);
+
+      return formattedContent;
     } catch (error) {
       console.error('Error scraping tweet:', error.message);
       return `[Error fetching tweet: ${error.message}]`;

@@ -18,4 +18,7 @@ module.exports = {
   summarize: {
     limit: parseInt(process.env.SUMMARIZE_LIMIT) || 100,
   },
+  database: {
+    path: process.env.NODE_ENV === 'test' ? ':memory:' : (process.env.DATABASE_PATH || 'database.sqlite'),
+  },
 };

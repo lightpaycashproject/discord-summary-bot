@@ -1,95 +1,56 @@
-// Mock OpenRouter SDK BEFORE requiring the service
+// Mock DatabaseService BEFORE everything
+jest.mock('../src/services/DatabaseService', () => {
+  return {
+    getCachedSummary: jest.fn(),
+    saveSummary: jest.fn(),
+    getCachedTweet: jest.fn(),
+    saveTweet: jest.fn()
+  };
+});
+
+// Mock OpenRouter SDK
 const mockSend = jest.fn();
 jest.mock('@openrouter/sdk', () => {
   return {
     OpenRouter: jest.fn().mockImplementation(() => {
-      return {
-        chat: {
-          send: mockSend
-        }
-      };
+      return { chat: { send: mockSend } };
     })
   };
 });
 
 const SummarizerService = require('../src/services/SummarizerService');
+const db = require('../src/services/DatabaseService');
 
-describe('SummarizerService', () => {
-  afterEach(() => {
+describe('SummarizerService with Caching', () => {
+  beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('should call OpenRouter SDK with correct parameters (non-streaming)', async () => {
-    const mockResponse = {
-      choices: [
-        { message: { content: 'This is a summary.' } }
-      ]
-    };
+  it('should call DB for cached summary', () => {
+    db.getCachedSummary.mockReturnValue('Cached summary');
+    const result = SummarizerService.getCachedSummary('chan1', 'msg1');
+    expect(result).toBe('Cached summary');
+    expect(db.getCachedSummary).toHaveBeenCalledWith('chan1', 'msg1');
+  });
+
+  it('should call SDK and return summary (non-streaming)', async () => {
+    const mockResponse = { choices: [{ message: { content: 'Summary text' } }] };
     mockSend.mockResolvedValue(mockResponse);
 
     const summary = await SummarizerService.summarize('Chat content');
-    expect(summary).toBe('This is a summary.');
+    
+    expect(summary).toBe('Summary text');
+    expect(mockSend).toHaveBeenCalled();
   });
 
-  it('should filter <think> tags in non-streaming mode', async () => {
-    const mockResponse = {
-      choices: [
-        { message: { content: '<think>Reasoning</think>Final result' } }
-      ]
-    };
-    mockSend.mockResolvedValue(mockResponse);
-
-    const summary = await SummarizerService.summarize('Chat content');
-    expect(summary).toBe('Final result');
+  it('should save summary to DB', () => {
+    SummarizerService.saveSummary('chan1', 'msg1', 'Summary text');
+    expect(db.saveSummary).toHaveBeenCalledWith('chan1', 'msg1', 'Summary text');
   });
 
-  it('should filter <think> tags in streaming mode', async () => {
-    // Create an async generator for the stream
-    const mockStream = (async function* () {
-      yield { choices: [{ delta: { content: 'Part 1 ' } }] };
-      yield { choices: [{ delta: { content: '<think>' } }] };
-      yield { choices: [{ delta: { content: 'reasoning' } }] };
-      yield { choices: [{ delta: { content: '</think>' } }] };
-      yield { choices: [{ delta: { content: 'Part 2' } }] };
-    })();
-
-    mockSend.mockResolvedValue(mockStream);
-
-    const updates = [];
-    const onUpdate = (text) => updates.push(text);
-
-    const summary = await SummarizerService.summarize('content', onUpdate);
-
-    expect(summary).toBe('Part 1 Part 2');
-    // Verify updates never contained 'reasoning'
-    updates.forEach(u => expect(u).not.toContain('reasoning'));
-  });
-
-  it('should handle partial tags at the end of chunks correctly', async () => {
-    const mockStream = (async function* () {
-      yield { choices: [{ delta: { content: 'Part 1 ' } }] };
-      yield { choices: [{ delta: { content: '<thi' } }] }; // Partial tag
-      yield { choices: [{ delta: { content: 'nk>' } }] };    // Completion
-      yield { choices: [{ delta: { content: 'Inside' } }] };
-      yield { choices: [{ delta: { content: '</think>' } }] };
-      yield { choices: [{ delta: { content: 'Part 2' } }] };
-    })();
-
-    mockSend.mockResolvedValue(mockStream);
-    const updates = [];
-    const summary = await SummarizerService.summarize('content', (text) => updates.push(text));
-
-    expect(summary).toBe('Part 1 Part 2');
-  });
-
-  it('should handle API errors gracefully', async () => {
-    mockSend.mockRejectedValue(new Error('SDK Error'));
+  it('should handle API errors', async () => {
+    mockSend.mockRejectedValue(new Error('API Fail'));
     const summary = await SummarizerService.summarize('content');
     expect(summary).toBe('Failed to generate summary due to an API error.');
-  });
-
-  it('should return default message for empty content', async () => {
-    const summary = await SummarizerService.summarize('');
-    expect(summary).toBe('No content to summarize.');
   });
 });

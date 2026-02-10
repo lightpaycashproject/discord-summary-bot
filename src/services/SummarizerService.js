@@ -1,5 +1,6 @@
 const { OpenRouter } = require('@openrouter/sdk');
 const { llm } = require('../../config');
+const db = require('./DatabaseService');
 
 class SummarizerService {
   constructor() {
@@ -22,6 +23,14 @@ Your goal is to provide a highly readable, structured, and visually appealing su
 Mention key participants and summarize the context of any X.com/Twitter threads provided.
 IMPORTANT: If you use an internal thinking process, wrap it in <think> tags. 
 The final user-visible output must NOT contain thinking tags or their content.`;
+  }
+
+  getCachedSummary(channelId, lastMessageId) {
+    return db.getCachedSummary(channelId, lastMessageId);
+  }
+
+  saveSummary(channelId, lastMessageId, summaryText) {
+    db.saveSummary(channelId, lastMessageId, summaryText);
   }
 
   /**
@@ -54,13 +63,10 @@ The final user-visible output must NOT contain thinking tags or their content.`;
           const chunk = part.choices[0]?.delta?.content || '';
           buffer += chunk;
 
-          // Process thinking tags filtering in the stream
-          // This is a simple state-machine for the stream
           while (buffer.length > 0) {
             if (!isThinking) {
               const startIdx = buffer.indexOf('<think>');
               if (startIdx !== -1) {
-                // Output everything before the tag
                 const clearText = buffer.substring(0, startIdx);
                 fullText += clearText;
                 if (clearText) onUpdate(fullText);
@@ -68,7 +74,6 @@ The final user-visible output must NOT contain thinking tags or their content.`;
                 isThinking = true;
                 buffer = buffer.substring(startIdx + 7);
               } else {
-                // No think tag yet. Check if we have a partial '<' at the end to avoid breaking tags
                 const lastBracket = buffer.lastIndexOf('<');
                 if (lastBracket !== -1 && lastBracket > buffer.length - 7) {
                   const safePart = buffer.substring(0, lastBracket);
@@ -88,7 +93,6 @@ The final user-visible output must NOT contain thinking tags or their content.`;
                 isThinking = false;
                 buffer = buffer.substring(endIdx + 8);
               } else {
-                // Still thinking, discard buffer
                 buffer = '';
                 break;
               }
@@ -97,9 +101,8 @@ The final user-visible output must NOT contain thinking tags or their content.`;
         }
         return fullText.trim();
       } else {
-        // Standard non-streaming fallback
-        const content = response.choices[0]?.message?.content || '';
-        return content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        const text = response.choices[0]?.message?.content || '';
+        return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
       }
     } catch (error) {
       console.error('Error summarizing content:', error.message);

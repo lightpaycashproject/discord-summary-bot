@@ -23,6 +23,7 @@
   "dependencies": {
     "@openrouter/sdk": "^0.8.0",
     "axios": "^1.13.5",
+    "better-sqlite3": "^12.6.2",
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.4",
     "openai": "^6.19.0"
