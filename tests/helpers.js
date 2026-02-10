@@ -24,6 +24,8 @@ function createMockInteraction(overrides = {}) {
     deferReply: jest.fn().mockResolvedValue({}),
     editReply: jest.fn().mockResolvedValue({}),
     reply: jest.fn().mockResolvedValue({}),
+    deferred: false,
+    replied: false,
     guildId: "guild123",
     commandName: "test",
     isCommand: () => true,

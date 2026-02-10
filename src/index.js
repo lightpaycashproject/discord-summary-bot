@@ -40,7 +40,9 @@ client.once(Events.ClientReady, (c) => {
 });
 
 // Proactive Scraper & Message Logger
-client.on(Events.MessageCreate, (message) => messageService.handleMessage(message));
+client.on(Events.MessageCreate, (message) =>
+  messageService.handleMessage(message),
+);
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isCommand()) return;

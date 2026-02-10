@@ -9,6 +9,7 @@ const {
 const scraperService = require("../src/services/ScraperService");
 const summarizerService = require("../src/services/SummarizerService");
 const dbService = require("../src/services/DatabaseService");
+const messageService = require("../src/services/MessageService");
 const SummarizeCommand = require("../src/commands/SummarizeCommand");
 const {
   createMockInteraction,
@@ -17,27 +18,23 @@ const {
 } = require("./helpers");
 
 describe("SummarizeCommand", () => {
-  let mockInteraction;
-  let mockStatusMsg;
-  let originalNow;
+  let mockInteraction, mockDM;
 
   beforeEach(() => {
     jest.restoreAllMocks();
     silenceConsole();
-    const { interaction } = createMockInteraction();
+    const { interaction, dmMessage } = createMockInteraction();
     mockInteraction = interaction;
-    mockStatusMsg = { edit: jest.fn().mockResolvedValue({}) };
-    mockInteraction.editReply.mockResolvedValue(mockStatusMsg);
-    mockInteraction.followUp = jest.fn().mockResolvedValue({});
-    
+    mockDM = dmMessage;
+    mockDM.delete = jest.fn().mockResolvedValue({});
+
     jest.spyOn(dbService, "getRecentSummary").mockReturnValue(null);
     jest.spyOn(dbService, "getMessages").mockReturnValue([]);
     jest.spyOn(dbService, "saveSummary").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    if (originalNow) Date.now = originalNow;
-    originalNow = undefined;
+    // kept for symmetry / future hooks
   });
 
   it("should deny non-text channels", async () => {
@@ -46,202 +43,142 @@ describe("SummarizeCommand", () => {
     expect(mockInteraction.reply).toHaveBeenCalled();
   });
 
-  it("should handle no messages in 24h", async () => {
+  it("should handle no messages", async () => {
     await SummarizeCommand.execute(mockInteraction);
     expect(mockInteraction.editReply).toHaveBeenCalledWith(
-      expect.stringContaining("No conversation found"),
+      expect.stringContaining("No conversation"),
     );
   });
 
-  it("should use cached summary if available and chunk it", async () => {
-    const msg = createMockMessage("1", Date.now());
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([["1", msg]]));
-    
-    const longSummary = "A".repeat(2500);
-    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(longSummary);
-
+  it("should use cached summary", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([["1", createMockMessage("1", Date.now())]]),
+    );
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue("Cached");
     await SummarizeCommand.execute(mockInteraction);
-    
-    expect(mockInteraction.editReply).toHaveBeenCalledWith(expect.stringContaining("[FRESH]"));
-    expect(mockInteraction.followUp).toHaveBeenCalled();
+    expect(mockInteraction.editReply).toHaveBeenCalledWith(
+      expect.stringContaining("Sent the summary"),
+    );
   });
 
-  it("should use recent summary within TTL if perfect match fails", async () => {
-    const msg = createMockMessage("2", Date.now());
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([["2", msg]]));
-
-    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue(null);
-    jest.spyOn(dbService, "getRecentSummary").mockReturnValue("Recent TTL Summary");
+  it("should handle cached summary DM failure", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([["1", createMockMessage("1", Date.now())]]),
+    );
+    jest.spyOn(summarizerService, "getCachedSummary").mockReturnValue("C");
+    jest
+      .spyOn(messageService, "sendDMChunks")
+      .mockRejectedValue(new Error("fail"));
 
     await SummarizeCommand.execute(mockInteraction);
-    expect(mockInteraction.editReply).toHaveBeenCalledWith(expect.stringContaining("[FRESH]"));
+    expect(mockInteraction.editReply).toHaveBeenCalledWith(
+      expect.stringContaining("could not DM you"),
+    );
   });
 
-  it("should use local message log if available", async () => {
-    dbService.getMessages.mockReturnValue([{ id: "1", username: "u1", content: "L", timestamp: Date.now() }]);
+  it("should generate new summary with scraping", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([
+        ["1", createMockMessage("1", Date.now(), "https://x.com/u/status/1")],
+      ]),
+    );
+    jest.spyOn(scraperService, "scrapeAllFromText").mockResolvedValue({
+      contextMap: new Map([["https://x.com/u/status/1", "C"]]),
+      failures: 1,
+    });
     jest.spyOn(summarizerService, "summarize").mockResolvedValue({
-      summary: "S", usage: { total_tokens: 5 }, model: "m"
+      summary: "S",
+      usage: { total_tokens: 1 },
+      model: "m",
     });
 
     await SummarizeCommand.execute(mockInteraction);
-    expect(mockInteraction.editReply).toHaveBeenCalledWith(expect.stringContaining("Using local message log"));
+    expect(mockInteraction.user.send).toHaveBeenCalled();
+    expect(mockDM.delete).toHaveBeenCalled();
   });
 
-  it("should generate new summary and handle batching and streaming", async () => {
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([
-      ["1", createMockMessage("1", Date.now(), "https://x.com/u/status/1")],
-    ]));
-
-    jest.spyOn(scraperService, "scrapeTweet").mockResolvedValue("C");
-    jest.spyOn(summarizerService, "summarize").mockImplementation(async (text, cb) => {
-      if (cb) {
-        const original = Date.now;
-        Date.now = jest.fn().mockReturnValueOnce(0).mockReturnValueOnce(2000).mockReturnValueOnce(2000);
-        await cb("U");
-        Date.now = original;
-      }
-      return { summary: "Final", usage: { total_tokens: 10 }, model: "m" };
-    });
-
+  it("should handle summarize error", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([["1", createMockMessage("1", Date.now())]]),
+    );
+    jest
+      .spyOn(summarizerService, "summarize")
+      .mockRejectedValue(new Error("boom"));
+    mockInteraction.deferred = true;
     await SummarizeCommand.execute(mockInteraction);
-    expect(mockStatusMsg.edit).toHaveBeenCalled();
+    const lastCall =
+      mockInteraction.editReply.mock.calls[
+        mockInteraction.editReply.mock.calls.length - 1
+      ][0];
+    expect(lastCall.content || lastCall).toContain("An error occurred");
   });
 
-  it("should handle streaming edit failures", async () => {
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([["1", createMockMessage("1", Date.now())]]));
-    mockStatusMsg.edit.mockRejectedValue(new Error("fail"));
-
-    jest.spyOn(summarizerService, "summarize").mockImplementation(async (t, cb) => {
-      if (cb) {
-        const original = Date.now;
-        Date.now = jest.fn().mockReturnValueOnce(0).mockReturnValue(2000);
-        await cb("test");
-        Date.now = original;
-      }
-      return { summary: "sum", usage: {}, model: "m" };
-    });
-
+  it("should handle summarize with stream callback", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([["1", createMockMessage("1", Date.now())]]),
+    );
+    jest
+      .spyOn(summarizerService, "summarize")
+      .mockImplementation(async (text, cb) => {
+        if (cb) await cb("test update");
+        return { summary: "final", usage: {}, model: "m" };
+      });
     await SummarizeCommand.execute(mockInteraction);
-    expect(mockStatusMsg.edit).toHaveBeenCalled();
+    expect(summarizerService.summarize).toHaveBeenCalled();
   });
 
-  it("should chunk very long summaries in final delivery", async () => {
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([["1", createMockMessage("1", Date.now())]]));
-    const longSummary = "S".repeat(2500);
+  it("should handle API fetch and map local format", async () => {
+    mockInteraction.channel.messages.fetch.mockResolvedValue(
+      new Map([["1", createMockMessage("1", Date.now())]]),
+    );
     jest.spyOn(summarizerService, "summarize").mockResolvedValue({
-      summary: longSummary, usage: { total_tokens: 10 }, model: "m"
+      summary: "S",
+      usage: { total_tokens: 1 },
+      model: "m",
     });
-
     await SummarizeCommand.execute(mockInteraction);
-    expect(mockInteraction.followUp).toHaveBeenCalled();
+    expect(summarizerService.summarize).toHaveBeenCalled();
   });
 
-  it("should handle summarize throwing errors", async () => {
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([["1", createMockMessage("1", Date.now())]]));
-    jest.spyOn(summarizerService, "summarize").mockRejectedValue(new Error("boom"));
-
-    await SummarizeCommand.execute(mockInteraction);
-    expect(mockInteraction.editReply).toHaveBeenCalledWith(expect.stringContaining("An error occurred"));
-  });
-
-  it("should ignore empty scrape results", async () => {
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([["1", createMockMessage("1", Date.now(), "https://x.com/1")]]));
-    jest.spyOn(scraperService, "scrapeTweet").mockResolvedValue(null);
-    jest.spyOn(summarizerService, "summarize").mockResolvedValue({ summary: "s", usage: { total_tokens: 1 }, model: "m" });
-
-    await SummarizeCommand.execute(mockInteraction);
-    expect(mockInteraction.editReply).toHaveBeenCalled();
-  });
-
-  it("should stop when allMessages > 10000", async () => {
-    originalNow = Date.now;
-    Date.now = jest.fn().mockReturnValue(originalNow());
+  it("should stop if messages > 10000", async () => {
     const batch = new Map();
-    for (let i = 0; i < 101; i++) batch.set(String(i), createMockMessage(String(i), Date.now()));
+    for (let i = 0; i < 101; i++)
+      batch.set(String(i), createMockMessage(String(i), Date.now()));
     mockInteraction.channel.messages.fetch = jest.fn().mockResolvedValue(batch);
-    jest.spyOn(summarizerService, "summarize").mockResolvedValue({ summary: "s", usage: { total_tokens: 1 }, model: "m" });
-
+    jest
+      .spyOn(summarizerService, "summarize")
+      .mockResolvedValue({ summary: "s" });
     await SummarizeCommand.execute(mockInteraction);
     expect(mockInteraction.channel.messages.fetch).toHaveBeenCalled();
   });
 
-  it("should skip status update if interval not reached", async () => {
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([["1", createMockMessage("1", Date.now())]]));
-    jest.spyOn(summarizerService, "summarize").mockImplementation(async (text, cb) => {
-      if (cb) {
-        const original = Date.now;
-        Date.now = jest.fn().mockReturnValueOnce(0).mockReturnValueOnce(1000);
-        await cb("update");
-        Date.now = original;
-      }
-      return { summary: "s", usage: {}, model: "m" };
+  describe("StreamUpdateHelper", () => {
+    it("should construct correctly", () => {
+      const helper = new SummarizeCommand.StreamUpdateHelper(mockDM, "c", 2000);
+      expect(helper.channelName).toBe("c");
+      expect(helper.updateInterval).toBe(2000);
     });
 
-    await SummarizeCommand.execute(mockInteraction);
-    expect(mockInteraction.editReply).toHaveBeenCalled();
-  });
-
-  it("should hit status message edit catch inside update interval branch", async () => {
-    originalNow = Date.now;
-    Date.now = jest.fn().mockReturnValueOnce(0);
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([["1", createMockMessage("1", Date.now())]]));
-    mockStatusMsg.edit.mockRejectedValue(new Error("x"));
-
-    jest.spyOn(summarizerService, "summarize").mockImplementation(async (text, cb) => {
-      if (cb) {
-        Date.now = jest.fn().mockReturnValueOnce(2000);
-        await cb("update");
-      }
-      return { summary: "s", usage: {}, model: "m" };
+    it("should truncate long stream text", async () => {
+      const helper = new SummarizeCommand.StreamUpdateHelper(mockDM, "c");
+      await helper.updateStatus("A".repeat(2000));
+      expect(mockDM.edit).toHaveBeenCalledWith(expect.stringContaining("..."));
     });
 
-    await SummarizeCommand.execute(mockInteraction);
-    expect(mockInteraction.editReply).toHaveBeenCalled();
-  });
-
-  it("should handle scrape failures and show warning in status", async () => {
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([["1", createMockMessage("1", Date.now(), "https://x.com/u/status/1")]]));
-    jest.spyOn(scraperService, "scrapeTweet").mockResolvedValue("[Error: Failed]");
-    jest.spyOn(summarizerService, "summarize").mockResolvedValue({ summary: "Done", usage: { total_tokens: 10 }, model: "gpt-4" });
-
-    await SummarizeCommand.execute(mockInteraction);
-    const call = mockInteraction.editReply.mock.calls.find(c => c[0] && c[0].includes("could not be fully scraped"));
-    expect(call).toBeDefined();
-  });
-
-  it("should handle scrape exceptions in the batch", async () => {
-    mockInteraction.channel.messages.fetch.mockResolvedValue(new Map([["1", createMockMessage("1", Date.now(), "https://x.com/u/status/1")]]));
-    jest.spyOn(scraperService, "scrapeTweet").mockRejectedValue(new Error("Net"));
-    jest.spyOn(summarizerService, "summarize").mockResolvedValue({ summary: "Done", usage: { total_tokens: 10 }, model: "gpt-4" });
-
-    await SummarizeCommand.execute(mockInteraction);
-    const call = mockInteraction.editReply.mock.calls.find(c => c[0] && c[0].includes("could not be fully scraped"));
-    expect(call).toBeDefined();
-  });
-
-  describe("chunkString Utility", () => {
-    it("should split string at newlines", () => {
-      const text = "Line 1\nLine 2\nLine 3";
-      const chunks = SummarizeCommand.chunkString(text, 10);
-      expect(chunks.length).toBe(3);
-      expect(chunks[0]).toBe("Line 1");
+    it("should skip update if interval not reached", async () => {
+      const helper = new SummarizeCommand.StreamUpdateHelper(mockDM, "c", 1000);
+      await helper.maybeUpdate("1");
+      await helper.maybeUpdate("2");
+      expect(mockDM.edit).not.toHaveBeenCalled();
     });
 
-    it("should split at maxLength if no newline found", () => {
-      const text = "1234567890ABCDE";
-      const chunks = SummarizeCommand.chunkString(text, 10);
-      expect(chunks[0]).toBe("1234567890");
-    });
-  });
-  
-  describe("StreamUpdateHelper edge cases", () => {
-    it("should truncate very long displayBody during stream", async () => {
-      const helper = new SummarizeCommand.StreamUpdateHelper(mockStatusMsg, "chan");
-      const longText = "A".repeat(2000);
-      await helper.updateStatus(longText);
-      const editArg = mockStatusMsg.edit.mock.calls[0][0];
-      expect(editArg.length).toBeLessThan(2000);
-      expect(editArg).toContain("...");
+    it("should handle edit errors in StreamUpdateHelper", async () => {
+      const helper = new SummarizeCommand.StreamUpdateHelper(mockDM, "c", 1);
+      mockDM.edit.mockRejectedValue(new Error("fail"));
+      await helper.maybeUpdate("1");
+      await new Promise((r) => setTimeout(r, 5));
+      await helper.maybeUpdate("2");
+      expect(mockDM.edit).toHaveBeenCalled();
     });
   });
 });

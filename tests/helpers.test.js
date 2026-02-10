@@ -1,5 +1,9 @@
 const { expect, it, describe, jest } = require("bun:test");
-const { createMockInteraction, createMockMessage, silenceConsole } = require("./helpers");
+const {
+  createMockInteraction,
+  createMockMessage,
+  silenceConsole,
+} = require("./helpers");
 
 describe("Helpers", () => {
   it("should create a mock interaction with default isCommand", () => {
@@ -16,14 +20,14 @@ describe("Helpers", () => {
   it("should silence console", () => {
     const spyError = jest.spyOn(console, "error").mockImplementation(() => {});
     const spyLog = jest.spyOn(console, "log").mockImplementation(() => {});
-    
+
     silenceConsole();
     console.error("test");
     console.log("test");
-    
+
     expect(spyError).toHaveBeenCalled();
     expect(spyLog).toHaveBeenCalled();
-    
+
     spyError.mockRestore();
     spyLog.mockRestore();
   });

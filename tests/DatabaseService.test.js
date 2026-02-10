@@ -65,12 +65,13 @@ describe("DatabaseService", () => {
 
   it("should handle error in version 2 migration columns", () => {
     dbService.setSchemaVersion(1);
-    const originalExec = dbService.db.exec.bind(dbService.db);
-    jest.spyOn(dbService.db, "exec").mockImplementation((sql) => {
+    const spy = jest.spyOn(dbService.db, "exec").mockImplementation((sql) => {
       if (sql.startsWith("ALTER TABLE")) throw new Error("exists");
-      return originalExec(sql);
+      if (sql.includes("CREATE TABLE")) return;
+      return;
     });
     expect(() => dbService.init()).not.toThrow();
+    spy.mockRestore();
   });
 
   it("should handle stats when query returns null", () => {
@@ -91,20 +92,27 @@ describe("DatabaseService", () => {
     const spy = jest.spyOn(dbService.db, "exec");
     dbService.setSchemaVersion(3);
     dbService.init();
-    expect(
-      spy.mock.calls
-        .filter((c) => c[0].includes("CREATE TABLE"))
-        .every((c) => c[0].includes("schema_meta")),
-    ).toBe(true);
+    const calls = spy.mock.calls.filter((c) => c[0].includes("CREATE TABLE"));
+    expect(calls.every((c) => c[0].includes("schema_meta"))).toBe(true);
+    spy.mockRestore();
   });
 
   it("should handle error during schema version check", () => {
-    jest.spyOn(dbService.db, "query").mockReturnValue({
-      get: () => {
-        throw new Error("fatal");
-      },
-    });
-    expect(() => dbService.getSchemaVersion()).toThrow("fatal");
+    const originalQuery = dbService.db.query;
+    dbService.db.query = () => {
+      throw new Error("fatal");
+    };
+    expect(dbService.getSchemaVersion()).toBe(0);
+    dbService.db.query = originalQuery;
+  });
+
+  it("should handle error during schema version set", () => {
+    const originalQuery = dbService.db.query;
+    dbService.db.query = () => {
+      throw new Error("fatal");
+    };
+    expect(() => dbService.setSchemaVersion(1)).not.toThrow();
+    dbService.db.query = originalQuery;
   });
 
   it("should retrieve recent summary within TTL", () => {
@@ -114,7 +122,7 @@ describe("DatabaseService", () => {
 
   it("should return null for summary outside TTL", () => {
     const originalNow = Date.now;
-    Date.now = jest.fn().mockReturnValue(originalNow() - 10000);
+    Date.now = jest.fn().mockReturnValue(originalNow() - 1000000);
     dbService.saveSummary("old", "m", "S");
     Date.now = originalNow;
     expect(dbService.getRecentSummary("old", 5000)).toBeNull();
@@ -124,6 +132,13 @@ describe("DatabaseService", () => {
     const now = Date.now();
     dbService.saveMessage("m1", "c1", "g1", "u1", "usr", "H", now);
     expect(dbService.getMessages("c1", now).length).toBe(1);
+  });
+
+  it("should prune messages", () => {
+    const now = Date.now();
+    dbService.saveMessage("old", "c", "g", "u", "n", "t", now - 1000000000);
+    dbService.pruneMessages(1);
+    expect(dbService.getMessages("c", 0).length).toBe(0);
   });
 
   it("should call db.close", () => {

@@ -3,13 +3,12 @@ const { StreamUpdateHelper } = require("../src/commands/SummarizeCommand");
 
 describe("StreamUpdateHelper", () => {
   let mockDmMessage;
-  let consoleErrorSpy;
 
   beforeEach(() => {
     mockDmMessage = {
       edit: jest.fn().mockResolvedValue({}),
     };
-    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(console, "error").mockImplementation(() => {});
   });
 
   it("should update DM when interval has passed", async () => {
@@ -43,7 +42,7 @@ describe("StreamUpdateHelper", () => {
     const helper = new StreamUpdateHelper(mockDmMessage, "test-channel", 5);
 
     await helper.maybeUpdate("Initial"); // set time
-    
+
     // Wait for interval to pass
     await new Promise((resolve) => setTimeout(resolve, 10));
     await helper.maybeUpdate("Test summary text");

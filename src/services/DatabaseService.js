@@ -46,31 +46,27 @@ class DatabaseService {
       {
         version: 2,
         run: () => {
-          // Add tracking columns to summaries
-          const summaryCols = [
-            { col: "guild_id", type: "TEXT" },
-            { col: "user_id", type: "TEXT" },
-            { col: "token_count", type: "INTEGER DEFAULT 0" },
-            { col: "cost", type: "REAL DEFAULT 0" },
-            { col: "model", type: "TEXT" },
+          const columns = [
+            { table: "summaries", col: "guild_id", type: "TEXT" },
+            { table: "summaries", col: "user_id", type: "TEXT" },
+            {
+              table: "summaries",
+              col: "token_count",
+              type: "INTEGER DEFAULT 0",
+            },
+            { table: "summaries", col: "cost", type: "REAL DEFAULT 0" },
+            { table: "summaries", col: "model", type: "TEXT" },
+            { table: "usage_stats", col: "cost", type: "REAL DEFAULT 0" },
+            { table: "usage_stats", col: "model", type: "TEXT" },
+            {
+              table: "usage_stats",
+              col: "type",
+              type: "TEXT DEFAULT 'summary'",
+            },
           ];
-          summaryCols.forEach(({ col, type }) => {
+          columns.forEach(({ table, col, type }) => {
             try {
-              this.db.exec(`ALTER TABLE summaries ADD COLUMN ${col} ${type}`);
-            } catch {
-              /* ignore */
-            }
-          });
-
-          // Add cost/model to usage_stats
-          const usageCols = [
-            { col: "cost", type: "REAL DEFAULT 0" },
-            { col: "model", type: "TEXT" },
-            { col: "type", type: "TEXT DEFAULT 'summary'" },
-          ];
-          usageCols.forEach(({ col, type }) => {
-            try {
-              this.db.exec(`ALTER TABLE usage_stats ADD COLUMN ${col} ${type}`);
+              this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
             } catch {
               /* ignore */
             }
@@ -105,18 +101,26 @@ class DatabaseService {
   }
 
   getSchemaVersion() {
-    const row = this.db
-      .query("SELECT value FROM schema_meta WHERE key = 'version'")
-      .get();
-    return row ? parseInt(row.value) : 0;
+    try {
+      const row = this.db
+        .query("SELECT value FROM schema_meta WHERE key = 'version'")
+        .get();
+      return row ? parseInt(row.value) : 0;
+    } catch {
+      return 0;
+    }
   }
 
   setSchemaVersion(v) {
-    this.db
-      .query(
-        "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', $v)",
-      )
-      .run({ $v: v.toString() });
+    try {
+      this.db
+        .query(
+          "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', $v)",
+        )
+        .run({ $v: v.toString() });
+    } catch {
+      /* ignore */
+    }
   }
 
   getCachedTweet(url) {
@@ -149,10 +153,6 @@ class DatabaseService {
       });
   }
 
-  /**
-   * Prunes messages older than the specified days.
-   * @param {number} days
-   */
   pruneMessages(days = 30) {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     this.db.query("DELETE FROM messages WHERE timestamp < $cutoff").run({

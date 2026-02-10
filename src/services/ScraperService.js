@@ -1,6 +1,49 @@
 const db = require("./DatabaseService");
 
 class ScraperService {
+  constructor() {
+    this.urlRegex =
+      /(https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[a-zA-Z0-9_]+\/status\/\d+)/g;
+  }
+
+  /**
+   * Finds and scrapes all X/Twitter links within a block of text.
+   * @param {string} text
+   * @returns {Promise<Map<string, string>>} Map of URL to scraped content.
+   */
+  async scrapeAllFromText(text) {
+    const uniqueUrls = new Set(text.match(this.urlRegex) || []);
+    const resultsMap = new Map();
+
+    if (uniqueUrls.size === 0) return { contextMap: resultsMap, failures: 0 };
+
+    const urlArray = Array.from(uniqueUrls);
+    let failures = 0;
+
+    for (let i = 0; i < urlArray.length; i += 5) {
+      const batch = urlArray.slice(i, i + 5);
+      const batchResults = await Promise.all(
+        batch.map(async (url) => {
+          try {
+            const content = await this.scrapeTweet(url);
+            if (content.includes("[Error") || content.includes("[Warning")) {
+              failures++;
+            }
+            return { url, content };
+          } catch {
+            failures++;
+            return { url, content: null };
+          }
+        }),
+      );
+      batchResults.forEach((res) => {
+        if (res.content) resultsMap.set(res.url, res.content);
+      });
+    }
+
+    return { contextMap: resultsMap, failures };
+  }
+
   /**
    * Scrapes tweet content from a given URL using FixTweet (fxtwitter) API.
    * Handles threads by unrolling them and includes quoted tweet text.

@@ -2,6 +2,8 @@ const { SlashCommandBuilder } = require("discord.js");
 const scraperService = require("../services/ScraperService");
 const summarizerService = require("../services/SummarizerService");
 const db = require("../services/DatabaseService");
+const messageService = require("../services/MessageService");
+const { handleCommandError } = require("../utils/commandHelper");
 
 /**
  * Helper class for managing stream updates to the channel.
@@ -14,11 +16,6 @@ class StreamUpdateHelper {
     this.updateInterval = updateInterval;
   }
 
-  /**
-   * Attempts to update the message if the update interval has passed.
-   * @param {string} currentFullText - The current summary text
-   * @returns {Promise<void>}
-   */
   async maybeUpdate(currentFullText) {
     const now = Date.now();
     if (now - this.lastUpdateTime > this.updateInterval) {
@@ -27,19 +24,12 @@ class StreamUpdateHelper {
     }
   }
 
-  /**
-   * Updates the channel message with the current text.
-   * @param {string} currentFullText - The current summary text
-   * @returns {Promise<void>}
-   */
   async updateStatus(currentFullText) {
     try {
-      // Discord limit is 2000 characters. If streaming, we just show the tail.
       let displayBody = currentFullText;
       if (displayBody.length > 1800) {
         displayBody = `...${displayBody.substring(displayBody.length - 1750)}`;
       }
-
       await this.statusMessage.edit(
         `**Conversation Summary for #${this.channelName} (Last 24h)**\n\n${displayBody} ▌`,
       );
@@ -49,41 +39,17 @@ class StreamUpdateHelper {
   }
 }
 
-/**
- * Splits a long string into chunks that fit within Discord's 2000 character limit.
- * @param {string} text
- * @param {number} maxLength
- * @returns {string[]}
- */
-function chunkString(text, maxLength = 1900) {
-  const chunks = [];
-  let current = text;
-  while (current.length > 0) {
-    if (current.length <= maxLength) {
-      chunks.push(current);
-      break;
-    }
-    let splitIdx = current.lastIndexOf("\n", maxLength);
-    if (splitIdx === -1) splitIdx = maxLength;
-    chunks.push(current.substring(0, splitIdx));
-    current = current.substring(splitIdx).trim();
-  }
-  return chunks;
-}
-
 module.exports = {
   StreamUpdateHelper,
-  chunkString,
 
   data: new SlashCommandBuilder()
     .setName("summarize")
     .setDescription(
-      "Summarizes the recent conversation in the channel and posts the result here.",
+      "Summarizes the recent conversation in the channel and DMs the result.",
     ),
 
   async execute(interaction) {
     const channel = interaction.channel;
-
     if (!channel.isTextBased()) {
       return interaction.reply({
         content: "I can only summarize text channels!",
@@ -91,53 +57,42 @@ module.exports = {
       });
     }
 
-    await interaction.deferReply();
+    await interaction.deferReply({ ephemeral: true });
 
     try {
       const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
       const startTime = Date.now() - TWENTY_FOUR_HOURS;
 
-      // 1. Try to fetch from Local Database first
-      let processedMessages = db.getMessages(channel.id, startTime);
-      let usedLocal = processedMessages.length > 0;
+      // 1. Fetch Local or API
+      let messages = db.getMessages(channel.id, startTime);
+      let usedLocal = messages.length > 0;
 
-      // 2. If local is empty, fallback to Discord API
-      if (processedMessages.length === 0) {
-        let allMessages = [];
+      if (!usedLocal) {
+        let all = [];
         let lastId = null;
-
         while (true) {
-          const fetchOptions = { limit: 100 };
-          if (lastId) fetchOptions.before = lastId;
-
-          const fetched = await channel.messages.fetch(fetchOptions);
+          const fetched = await channel.messages.fetch({
+            limit: 100,
+            before: lastId,
+          });
           if (fetched.size === 0) break;
-
-          const filtered = Array.from(fetched.values());
-          allMessages.push(...filtered);
-
-          lastId = filtered[filtered.length - 1].id;
-          if (filtered[filtered.length - 1].createdTimestamp < startTime) break;
-          if (allMessages.length > 10000) break;
+          const list = Array.from(fetched.values());
+          all.push(...list);
+          lastId = list[list.length - 1].id;
+          if (
+            list[list.length - 1].createdTimestamp < startTime ||
+            all.length > 10000
+          )
+            break;
         }
-
-        processedMessages = allMessages
+        messages = all
           .filter((m) => m.createdTimestamp >= startTime && !m.author.bot)
-          .map((m) => ({
-            id: m.id,
-            username: m.author.username,
-            content: m.content,
-            createdTimestamp: m.createdTimestamp,
-          }))
           .reverse();
-      } else {
-        processedMessages = processedMessages.map((m) => ({
-          id: m.id,
-          username: m.username,
-          content: m.content,
-          createdTimestamp: m.timestamp,
-        }));
       }
+
+      const processedMessages = messages.map((m) =>
+        messageService.formatStandard(m),
+      );
 
       if (processedMessages.length === 0) {
         return interaction.editReply(
@@ -147,110 +102,81 @@ module.exports = {
 
       const lastMessageId = processedMessages[processedMessages.length - 1].id;
 
-      // 3. Check Cache
-      const cachedSummary =
+      // 2. Check Cache
+      const cached =
         summarizerService.getCachedSummary(channel.id, lastMessageId) ||
         db.getRecentSummary(channel.id, 5 * 60 * 1000);
 
-      if (cachedSummary) {
-        const chunks = chunkString(cachedSummary);
-        await interaction.editReply(
-          `**[FRESH] Conversation Summary for #${channel.name} (Last 24h)**\n\n${chunks[0]}`,
-        );
-        for (let i = 1; i < chunks.length; i++) {
-          await interaction.followUp(chunks[i]);
-        }
-        return;
-      }
-
-      // 4. Pre-Scrape X Links
-      const urlRegex =
-        /(https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[a-zA-Z0-9_]+\/status\/\d+)/g;
-      const uniqueUrls = new Set();
-      processedMessages.forEach((m) => {
-        const matches = m.content.match(urlRegex);
-        if (matches) matches.forEach((url) => uniqueUrls.add(url));
-      });
-
-      const urlContextMap = new Map();
-      let scrapeFailures = 0;
-      if (uniqueUrls.size > 0) {
-        const urlArray = Array.from(uniqueUrls);
-        for (let i = 0; i < urlArray.length; i += 5) {
-          const batch = urlArray.slice(i, i + 5);
-          const results = await Promise.all(
-            batch.map(async (url) => {
-              try {
-                const content = await scraperService.scrapeTweet(url);
-                if (content.includes("[Error") || content.includes("[Warning"))
-                  scrapeFailures++;
-                return { url, content };
-              } catch (e) {
-                scrapeFailures++;
-                return { url, content: null };
-              }
-            }),
+      if (cached) {
+        try {
+          await messageService.sendDMChunks(
+            interaction.user,
+            cached,
+            `**[FRESH] Conversation Summary for #${channel.name} (Last 24h)**\n\n`,
           );
-          results.forEach((res) => {
-            if (res.content) urlContextMap.set(res.url, res.content);
-          });
+          return interaction.editReply("Sent the summary to your DMs!");
+        } catch {
+          return interaction.editReply(
+            "I have a cached summary but could not DM you. Check privacy settings.",
+          );
         }
       }
 
-      // 5. Initial Status
+      // 3. Pre-Scrape
+      const fullText = processedMessages.map((m) => m.content).join(" ");
+      const { contextMap, failures } =
+        await scraperService.scrapeAllFromText(fullText);
+
+      // 4. Status Message
       let statusMsg = `⌛ **Generating summary for #${channel.name} (Last 24h)...**`;
       if (usedLocal) statusMsg += "\n⚡ *Using local message log.*";
-      if (scrapeFailures > 0)
-        statusMsg += `\n⚠️ *Note: ${scrapeFailures} Twitter link(s) could not be fully scraped.*`;
+      if (failures > 0)
+        statusMsg += `\n⚠️ *Note: ${failures} Twitter link(s) could not be fully scraped.*`;
 
-      const statusMessage = await interaction.editReply(statusMsg);
+      const dmStatusMsg = await interaction.user.send(statusMsg);
+      await interaction.editReply(
+        "I'm generating your summary! It will be streamed to your DMs.",
+      );
 
-      // 6. Build Text
+      // 5. Summarize
       let conversationText = "";
-      for (const msg of processedMessages) {
+      processedMessages.forEach((msg) => {
         let content = msg.content;
-        const matches = content.match(urlRegex);
+        const matches = content.match(scraperService.urlRegex);
         if (matches) {
           matches.forEach((url) => {
-            const context = urlContextMap.get(url);
+            const context = contextMap.get(url);
             if (context) content += `\n[Tweet Context: ${context}]`;
           });
         }
         conversationText += `${msg.username}: ${content}\n`;
-      }
+      });
 
-      // 7. Summarize with Streaming
-      const streamHelper = new StreamUpdateHelper(statusMessage, channel.name);
+      const streamHelper = new StreamUpdateHelper(dmStatusMsg, channel.name);
       const result = await summarizerService.summarize(
         conversationText,
         async (t) => await streamHelper.maybeUpdate(t),
       );
 
-      const { summary, usage, model } = result;
       summarizerService.saveSummary(
         channel.id,
         lastMessageId,
-        summary,
+        result.summary,
         interaction.guildId,
         interaction.user.id,
-        usage?.total_tokens || summary.split(/\s+/).length,
-        usage?.total_cost || 0,
-        model,
+        result.usage?.total_tokens || result.summary.split(/\s+/).length,
+        result.usage?.total_cost || 0,
+        result.model,
       );
 
-      // 8. Final Delivery
-      const chunks = chunkString(summary);
-      await statusMessage.edit(
-        `**Conversation Summary for #${channel.name} (Last 24h)**\n\n${chunks[0]}`,
+      await messageService.sendDMChunks(
+        interaction.user,
+        result.summary,
+        `**Conversation Summary for #${channel.name} (Last 24h)**\n\n`,
       );
-      for (let i = 1; i < chunks.length; i++) {
-        await interaction.followUp(chunks[i]);
-      }
+      await dmStatusMsg.delete().catch(() => {});
     } catch (error) {
-      console.error("Error in summarize command:", error.message);
-      await interaction.editReply(
-        "An error occurred while generating the summary.",
-      );
+      await handleCommandError(interaction, error);
     }
   },
 };

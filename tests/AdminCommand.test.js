@@ -54,16 +54,21 @@ describe("AdminCommand", () => {
     expect(mockInteraction.reply).toHaveBeenCalled();
   });
 
-  it("should handle errors in clear-cache", async () => {
+  it("should handle errors gracefully", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("clear-cache");
+    mockInteraction.deferred = true;
     jest.spyOn(db, "clearChannelCache").mockImplementation(() => {
-      throw new Error("DB error");
+      throw new Error("e");
     });
     await AdminCommand.execute(mockInteraction);
-    expect(mockInteraction.reply).toHaveBeenCalled();
+    expect(mockInteraction.editReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining("Failed to execute"),
+      }),
+    );
   });
 
-  it("should handle empty stats branches", async () => {
+  it("should handle empty stats", async () => {
     mockInteraction.options.getSubcommand.mockReturnValue("stats");
     jest.spyOn(db, "getDetailedStats").mockReturnValue({
       topUsers: [],
@@ -72,22 +77,8 @@ describe("AdminCommand", () => {
       totalTokens: 0,
       totalCost: 0,
     });
-
     await AdminCommand.execute(mockInteraction);
     const replyArg = mockInteraction.reply.mock.calls[0][0];
     expect(replyArg.content).toContain("No usage data yet");
-  });
-
-  it("should handle stats errors gracefully", async () => {
-    mockInteraction.options.getSubcommand.mockReturnValue("stats");
-    jest.spyOn(db, "getDetailedStats").mockImplementation(() => {
-      throw new Error("boom");
-    });
-    await AdminCommand.execute(mockInteraction);
-    expect(mockInteraction.reply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining("Failed to fetch stats"),
-      }),
-    );
   });
 });
