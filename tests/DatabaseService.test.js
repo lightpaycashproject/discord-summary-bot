@@ -98,6 +98,15 @@ describe("DatabaseService", () => {
     ).toBe(true);
   });
 
+  it("should handle error during schema version check", () => {
+    jest.spyOn(dbService.db, "query").mockReturnValue({
+      get: () => {
+        throw new Error("fatal");
+      },
+    });
+    expect(() => dbService.getSchemaVersion()).toThrow("fatal");
+  });
+
   it("should retrieve recent summary within TTL", () => {
     dbService.saveSummary("ttl", "m", "S");
     expect(dbService.getRecentSummary("ttl", 5000)).toBe("S");

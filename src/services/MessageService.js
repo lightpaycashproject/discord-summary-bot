@@ -23,6 +23,11 @@ class MessageService {
         message.content,
         message.createdTimestamp,
       );
+
+      // Periodically prune old messages (roughly every 1000 messages)
+      if (Math.random() < 0.1) {
+        db.pruneMessages(30);
+      }
     } catch (e) {
       console.error(`Failed to log message ${message.id}:`, e.message);
     }

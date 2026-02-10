@@ -71,4 +71,24 @@ describe("MessageService", () => {
     // Should not throw (async errors in loops are caught and logged)
     await MessageService.handleMessage(msg);
   });
+
+  it("should prune messages periodically", async () => {
+    const msg = {
+      id: "1",
+      channelId: "c1",
+      guildId: "g1",
+      author: { id: "u1", username: "user", bot: false },
+      content: "hi",
+      createdTimestamp: Date.now(),
+    };
+
+    const originalRandom = Math.random;
+    Math.random = () => 0.05; // Force < 0.1
+    const spyPrune = jest.spyOn(db, "pruneMessages").mockImplementation(() => {});
+
+    await MessageService.handleMessage(msg);
+    expect(spyPrune).toHaveBeenCalled();
+    
+    Math.random = originalRandom;
+  });
 });

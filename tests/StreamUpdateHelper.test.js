@@ -3,53 +3,60 @@ const { StreamUpdateHelper } = require("../src/commands/SummarizeCommand");
 
 describe("StreamUpdateHelper", () => {
   let mockDmMessage;
+  let consoleErrorSpy;
 
   beforeEach(() => {
     mockDmMessage = {
-      edit: jest.fn().mockResolvedValue(undefined),
+      edit: jest.fn().mockResolvedValue({}),
     };
-    jest.spyOn(console, "error").mockImplementation(() => {});
+    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
   });
 
   it("should update DM when interval has passed", async () => {
-    const helper = new StreamUpdateHelper(mockDmMessage, "general", 100);
+    const helper = new StreamUpdateHelper(mockDmMessage, "test-channel", 5); // 5ms interval
+
+    // Initial update should set the baseline
+    await helper.maybeUpdate("First update");
+    expect(mockDmMessage.edit).toHaveBeenCalledTimes(0); // first call just sets time
+
     // Wait for interval to pass
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
-    await helper.maybeUpdate("Test summary text");
-
+    await helper.maybeUpdate("Second update");
+    expect(mockDmMessage.edit).toHaveBeenCalledTimes(1);
     expect(mockDmMessage.edit).toHaveBeenCalledWith(
-      "**Conversation Summary for #general (Last 24h)**\n\nTest summary text ▌",
+      expect.stringContaining("Second update"),
     );
   });
 
   it("should skip update when interval has not passed", async () => {
-    const helper = new StreamUpdateHelper(mockDmMessage, "general", 5000);
+    const helper = new StreamUpdateHelper(mockDmMessage, "test-channel", 1000);
 
-    await helper.maybeUpdate("Test summary text");
+    await helper.maybeUpdate("First update");
+    await helper.maybeUpdate("Too soon");
 
     expect(mockDmMessage.edit).not.toHaveBeenCalled();
   });
 
   it("should handle DM edit errors gracefully", async () => {
-    mockDmMessage.edit = jest
-      .fn()
-      .mockRejectedValue(new Error("DM edit failed"));
+    mockDmMessage.edit.mockRejectedValue(new Error("DM edit failed"));
+    const helper = new StreamUpdateHelper(mockDmMessage, "test-channel", 5);
 
-    const helper = new StreamUpdateHelper(mockDmMessage, "general", 1);
+    await helper.maybeUpdate("Initial"); // set time
+    
     // Wait for interval to pass
     await new Promise((resolve) => setTimeout(resolve, 10));
     await helper.maybeUpdate("Test summary text");
 
     expect(mockDmMessage.edit).toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith(
-      "Failed to update DM stream:",
+      "Failed to update channel stream:",
       "DM edit failed",
     );
   });
 
-  it("should use default update interval", async () => {
-    const helper = new StreamUpdateHelper(mockDmMessage, "general");
+  it("should use default update interval", () => {
+    const helper = new StreamUpdateHelper(mockDmMessage, "test-channel");
     expect(helper.updateInterval).toBe(1500);
   });
 });

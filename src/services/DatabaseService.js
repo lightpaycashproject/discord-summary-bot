@@ -149,6 +149,17 @@ class DatabaseService {
       });
   }
 
+  /**
+   * Prunes messages older than the specified days.
+   * @param {number} days
+   */
+  pruneMessages(days = 30) {
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    this.db.query("DELETE FROM messages WHERE timestamp < $cutoff").run({
+      $cutoff: cutoff,
+    });
+  }
+
   getMessages(channelId, startTime) {
     return this.db
       .query(
