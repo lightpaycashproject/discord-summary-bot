@@ -9,7 +9,9 @@ describe("DatabaseService", () => {
   });
 
   it("should enable WAL mode on initialization", () => {
-    const journalMode = dbService.db.query("PRAGMA journal_mode").get().journal_mode;
+    const journalMode = dbService.db
+      .query("PRAGMA journal_mode")
+      .get().journal_mode;
     expect(["wal", "memory"]).toContain(journalMode);
   });
 
@@ -69,7 +71,9 @@ describe("DatabaseService", () => {
   });
 
   it("should handle stats when query returns null", () => {
-    jest.spyOn(dbService.db, "query").mockReturnValue({ all: () => [], get: () => null });
+    jest
+      .spyOn(dbService.db, "query")
+      .mockReturnValue({ all: () => [], get: () => null });
     const stats = dbService.getDetailedStats();
     expect(stats.totalTokens).toBe(0);
     expect(stats.totalCost).toBe(0);
@@ -84,7 +88,11 @@ describe("DatabaseService", () => {
     const spy = jest.spyOn(dbService.db, "exec");
     dbService.setSchemaVersion(3);
     dbService.init();
-    expect(spy.mock.calls.filter(c => c[0].includes("CREATE TABLE")).every(c => c[0].includes("schema_meta"))).toBe(true);
+    expect(
+      spy.mock.calls
+        .filter((c) => c[0].includes("CREATE TABLE"))
+        .every((c) => c[0].includes("schema_meta")),
+    ).toBe(true);
   });
 
   it("should retrieve recent summary within TTL", () => {

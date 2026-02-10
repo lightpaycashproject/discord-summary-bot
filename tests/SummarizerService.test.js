@@ -10,13 +10,19 @@ describe("SummarizerService", () => {
   });
 
   it("should call DB for cached summary", () => {
-    const spy = jest.spyOn(db, "getCachedSummary").mockReturnValue("S");
+    jest.spyOn(db, "getCachedSummary").mockReturnValue("S");
     expect(SummarizerService.getCachedSummary("c", "m")).toBe("S");
   });
 
   it("should call SDK and return summary (non-streaming)", async () => {
-    const mockRes = { choices: [{ message: { content: "Res" } }], usage: { t: 10 }, model: "m" };
-    jest.spyOn(SummarizerService.openRouter.chat, "send").mockResolvedValue(mockRes);
+    const mockRes = {
+      choices: [{ message: { content: "Res" } }],
+      usage: { t: 10 },
+      model: "m",
+    };
+    jest
+      .spyOn(SummarizerService.openRouter.chat, "send")
+      .mockResolvedValue(mockRes);
     const result = await SummarizerService.summarize("Content");
     expect(result.summary).toBe("Res");
   });
@@ -26,9 +32,13 @@ describe("SummarizerService", () => {
       { choices: [{ delta: { content: "H " } }] },
       { choices: [{ delta: { content: "<think>t</think>W" } }] },
     ];
-    jest.spyOn(SummarizerService.openRouter.chat, "send").mockReturnValue(mockStream);
+    jest
+      .spyOn(SummarizerService.openRouter.chat, "send")
+      .mockReturnValue(mockStream);
     const updates = [];
-    const result = await SummarizerService.summarize("C", (t) => updates.push(t));
+    const result = await SummarizerService.summarize("C", (t) =>
+      updates.push(t),
+    );
     expect(result.summary).toBe("H W");
   });
 
@@ -38,14 +48,18 @@ describe("SummarizerService", () => {
       { choices: [{ delta: { content: "<th" } }] },
       { choices: [{ delta: { content: "ink>t</think>E" } }] },
     ];
-    jest.spyOn(SummarizerService.openRouter.chat, "send").mockReturnValue(mockStream);
+    jest
+      .spyOn(SummarizerService.openRouter.chat, "send")
+      .mockReturnValue(mockStream);
     const result = await SummarizerService.summarize("C", () => {});
     expect(result.summary).toBe("S E");
   });
 
   it("should handle stream with unclosed <think> tag", async () => {
     const mockStream = [{ choices: [{ delta: { content: "H <think>t" } }] }];
-    jest.spyOn(SummarizerService.openRouter.chat, "send").mockReturnValue(mockStream);
+    jest
+      .spyOn(SummarizerService.openRouter.chat, "send")
+      .mockReturnValue(mockStream);
     const result = await SummarizerService.summarize("C", () => {});
     expect(result.summary).toBe("H");
   });
@@ -57,7 +71,9 @@ describe("SummarizerService", () => {
   });
 
   it("should handle API errors", async () => {
-    jest.spyOn(SummarizerService.openRouter.chat, "send").mockRejectedValue(new Error("fail"));
+    jest
+      .spyOn(SummarizerService.openRouter.chat, "send")
+      .mockRejectedValue(new Error("fail"));
     await expect(SummarizerService.summarize("c")).rejects.toThrow("fail");
   });
 

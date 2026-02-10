@@ -1,11 +1,4 @@
-const {
-  expect,
-  it,
-  describe,
-  beforeEach,
-  afterEach,
-  jest,
-} = require("bun:test");
+const { expect, it, describe, beforeEach, jest } = require("bun:test");
 const db = require("../src/services/DatabaseService");
 const ScraperService = require("../src/services/ScraperService");
 const { silenceConsole } = require("./helpers");
@@ -52,7 +45,9 @@ describe("ScraperService", () => {
 
     it("should return cached tweet if available", async () => {
       jest.spyOn(db, "getCachedTweet").mockReturnValue({ content: "Cached" });
-      const result = await ScraperService.scrapeTweet("https://x.com/u/status/1");
+      const result = await ScraperService.scrapeTweet(
+        "https://x.com/u/status/1",
+      );
       expect(result).toBe("Cached");
     });
 
@@ -63,10 +58,15 @@ describe("ScraperService", () => {
       const originalFetch = global.fetch;
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ tweet: { author: { screen_name: "t" }, text: "hi" } }),
+        json: () =>
+          Promise.resolve({
+            tweet: { author: { screen_name: "t" }, text: "hi" },
+          }),
       });
 
-      const result = await ScraperService.scrapeTweet("https://x.com/u/status/456");
+      const result = await ScraperService.scrapeTweet(
+        "https://x.com/u/status/456",
+      );
       expect(result).toBe("@t: hi");
       expect(spySave).toHaveBeenCalled();
       global.fetch = originalFetch;
@@ -77,11 +77,30 @@ describe("ScraperService", () => {
       const spySave = jest.spyOn(db, "saveTweet").mockImplementation(() => {});
 
       const originalFetch = global.fetch;
-      global.fetch = jest.fn()
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ tweet: { author: { screen_name: "u" }, text: "T2", replying_to_status: "1" } }) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ tweet: { author: { screen_name: "u" }, text: "T1" } }) });
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              tweet: {
+                author: { screen_name: "u" },
+                text: "T2",
+                replying_to_status: "1",
+              },
+            }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              tweet: { author: { screen_name: "u" }, text: "T1" },
+            }),
+        });
 
-      const result = await ScraperService.scrapeTweet("https://x.com/u/status/2");
+      const result = await ScraperService.scrapeTweet(
+        "https://x.com/u/status/2",
+      );
       expect(result).toContain("T1");
       expect(result).toContain("T2");
       expect(spySave).toHaveBeenCalled();
@@ -89,23 +108,48 @@ describe("ScraperService", () => {
     });
 
     it("should include media images in formatting", () => {
-      const tweet = { author: { screen_name: "u" }, text: "L", media: { all: [{ url: "img" }] } };
+      const tweet = {
+        author: { screen_name: "u" },
+        text: "L",
+        media: { all: [{ url: "img" }] },
+      };
       expect(ScraperService.formatTweet(tweet)).toContain("img");
     });
 
     it("should include quoted tweet media", () => {
-      const tweet = { author: { screen_name: "u" }, text: "L", quote: { author: { screen_name: "q" }, text: "qt", media: { all: [{ url: "img2" }] } } };
+      const tweet = {
+        author: { screen_name: "u" },
+        text: "L",
+        quote: {
+          author: { screen_name: "q" },
+          text: "qt",
+          media: { all: [{ url: "img2" }] },
+        },
+      };
       expect(ScraperService.formatTweet(tweet)).toContain("img2");
     });
 
     it("should handle partial thread failure in fetchThread", async () => {
       jest.spyOn(db, "getCachedTweet").mockReturnValue(null);
       const originalFetch = global.fetch;
-      global.fetch = jest.fn()
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ tweet: { author: { screen_name: "u" }, text: "T", replying_to_status: "1" } }) })
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              tweet: {
+                author: { screen_name: "u" },
+                text: "T",
+                replying_to_status: "1",
+              },
+            }),
+        })
         .mockRejectedValueOnce(new Error("fail"));
 
-      const result = await ScraperService.scrapeTweet("https://x.com/u/status/2");
+      const result = await ScraperService.scrapeTweet(
+        "https://x.com/u/status/2",
+      );
       expect(result).toContain("@u: T");
       global.fetch = originalFetch;
     });
@@ -115,15 +159,21 @@ describe("ScraperService", () => {
       const originalFetch = global.fetch;
       global.fetch = jest.fn().mockResolvedValue({ ok: false });
 
-      const result = await ScraperService.scrapeTweet("https://x.com/u/status/123");
+      const result = await ScraperService.scrapeTweet(
+        "https://x.com/u/status/123",
+      );
       expect(result).toContain("Warning: Could not fetch content");
       global.fetch = originalFetch;
     });
 
     it("should handle fatal errors in scrapeTweet", async () => {
       const originalFetchThread = ScraperService.fetchThread;
-      ScraperService.fetchThread = jest.fn().mockRejectedValue(new Error("Fatal"));
-      const result = await ScraperService.scrapeTweet("https://x.com/u/status/123");
+      ScraperService.fetchThread = jest
+        .fn()
+        .mockRejectedValue(new Error("Fatal"));
+      const result = await ScraperService.scrapeTweet(
+        "https://x.com/u/status/123",
+      );
       expect(result).toContain("Error: Failed to reach the scraping service");
       ScraperService.fetchThread = originalFetchThread;
     });
@@ -137,7 +187,10 @@ describe("ScraperService", () => {
   describe("ScraperService Edge Cases", () => {
     it("should return thread when API returns data without tweet property", async () => {
       const originalFetch = global.fetch;
-      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ code: 200 }) });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ code: 200 }),
+      });
       const result = await ScraperService.fetchThread("1", []);
       expect(result).toEqual([]);
       global.fetch = originalFetch;
@@ -145,8 +198,21 @@ describe("ScraperService", () => {
 
     it("should stop fetching when thread length reaches 10", async () => {
       const originalFetch = global.fetch;
-      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ tweet: { author: { screen_name: "u" }, text: "T", replying_to_status: "1" } }) });
-      const existing = Array(9).fill({ author: { screen_name: "u" }, text: "T" });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            tweet: {
+              author: { screen_name: "u" },
+              text: "T",
+              replying_to_status: "1",
+            },
+          }),
+      });
+      const existing = Array(9).fill({
+        author: { screen_name: "u" },
+        text: "T",
+      });
       const result = await ScraperService.fetchThread("1", existing);
       expect(result.length).toBe(10);
       expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -155,7 +221,13 @@ describe("ScraperService", () => {
 
     it("should handle tweet without replying_to_status", async () => {
       const originalFetch = global.fetch;
-      global.fetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ tweet: { author: { screen_name: "u" }, text: "orig" } }) });
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            tweet: { author: { screen_name: "u" }, text: "orig" },
+          }),
+      });
       const result = await ScraperService.fetchThread("123", []);
       expect(result.length).toBe(1);
       expect(result[0].text).toBe("orig");
@@ -165,8 +237,12 @@ describe("ScraperService", () => {
     it("should handle fetchThread errors gracefully", async () => {
       jest.spyOn(db, "getCachedTweet").mockReturnValue(null);
       const originalFetchThread = ScraperService.fetchThread;
-      ScraperService.fetchThread = jest.fn().mockRejectedValue(new Error("fail"));
-      const result = await ScraperService.scrapeTweet("https://x.com/u/status/123");
+      ScraperService.fetchThread = jest
+        .fn()
+        .mockRejectedValue(new Error("fail"));
+      const result = await ScraperService.scrapeTweet(
+        "https://x.com/u/status/123",
+      );
       expect(result).toContain("Error: Failed to reach the scraping service");
       ScraperService.fetchThread = originalFetchThread;
     });

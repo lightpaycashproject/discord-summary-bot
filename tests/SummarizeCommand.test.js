@@ -138,7 +138,9 @@ describe("SummarizeCommand", () => {
       ]),
     );
 
-    jest.spyOn(scraperService, "scrapeTweet").mockResolvedValue("Tweet Content");
+    jest
+      .spyOn(scraperService, "scrapeTweet")
+      .mockResolvedValue("Tweet Content");
     jest
       .spyOn(summarizerService, "summarize")
       .mockImplementation(async (text, cb) => {
@@ -217,9 +219,11 @@ describe("SummarizeCommand", () => {
       new Map([["1", createMockMessage("1", Date.now(), "https://x.com/1")]]),
     );
     jest.spyOn(scraperService, "scrapeTweet").mockResolvedValue(null);
-    jest
-      .spyOn(summarizerService, "summarize")
-      .mockResolvedValue({ summary: "s", usage: { total_tokens: 1 }, model: "m" });
+    jest.spyOn(summarizerService, "summarize").mockResolvedValue({
+      summary: "s",
+      usage: { total_tokens: 1 },
+      model: "m",
+    });
 
     await SummarizeCommand.execute(mockInteraction);
     expect(mockInteraction.editReply).toHaveBeenCalled();
@@ -230,9 +234,11 @@ describe("SummarizeCommand", () => {
       new Map([["1", createMockMessage("1", Date.now(), "https://x.com/1")]]),
     );
     jest.spyOn(scraperService, "scrapeTweet").mockRejectedValue(new Error("e"));
-    jest
-      .spyOn(summarizerService, "summarize")
-      .mockResolvedValue({ summary: "s", usage: { total_tokens: 1 }, model: "m" });
+    jest.spyOn(summarizerService, "summarize").mockResolvedValue({
+      summary: "s",
+      usage: { total_tokens: 1 },
+      model: "m",
+    });
 
     await SummarizeCommand.execute(mockInteraction);
     expect(mockInteraction.editReply).toHaveBeenCalled();
@@ -248,9 +254,11 @@ describe("SummarizeCommand", () => {
     }
     mockInteraction.channel.messages.fetch = jest.fn().mockResolvedValue(batch);
 
-    jest
-      .spyOn(summarizerService, "summarize")
-      .mockResolvedValue({ summary: "s", usage: { total_tokens: 1 }, model: "m" });
+    jest.spyOn(summarizerService, "summarize").mockResolvedValue({
+      summary: "s",
+      usage: { total_tokens: 1 },
+      model: "m",
+    });
 
     await SummarizeCommand.execute(mockInteraction);
     expect(mockInteraction.channel.messages.fetch).toHaveBeenCalled();
@@ -399,9 +407,13 @@ describe("SummarizeCommand", () => {
 
   it("should handle scrape failures and show warning in status", async () => {
     mockInteraction.channel.messages.fetch.mockResolvedValue(
-      new Map([["1", createMockMessage("1", Date.now(), "https://x.com/u/status/1")]]),
+      new Map([
+        ["1", createMockMessage("1", Date.now(), "https://x.com/u/status/1")],
+      ]),
     );
-    jest.spyOn(scraperService, "scrapeTweet").mockResolvedValue("[Error: Failed]");
+    jest
+      .spyOn(scraperService, "scrapeTweet")
+      .mockResolvedValue("[Error: Failed]");
     jest.spyOn(summarizerService, "summarize").mockResolvedValue({
       summary: "Done",
       usage: { total_tokens: 10, total_cost: 0.1 },
@@ -417,9 +429,13 @@ describe("SummarizeCommand", () => {
 
   it("should handle scrape exceptions in the batch", async () => {
     mockInteraction.channel.messages.fetch.mockResolvedValue(
-      new Map([["1", createMockMessage("1", Date.now(), "https://x.com/u/status/1")]]),
+      new Map([
+        ["1", createMockMessage("1", Date.now(), "https://x.com/u/status/1")],
+      ]),
     );
-    jest.spyOn(scraperService, "scrapeTweet").mockRejectedValue(new Error("Net"));
+    jest
+      .spyOn(scraperService, "scrapeTweet")
+      .mockRejectedValue(new Error("Net"));
     jest.spyOn(summarizerService, "summarize").mockResolvedValue({
       summary: "Done",
       usage: { total_tokens: 10, total_cost: 0.1 },
