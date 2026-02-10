@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 const summarizeCommand = require('./commands/SummarizeCommand');
+const adminCommand = require('./commands/AdminCommand');
 const ScraperService = require('./services/ScraperService');
 
 const client = new Client({
@@ -15,7 +16,8 @@ const client = new Client({
 });
 
 client.commands = new Collection();
-client.commands.set(summarizeCommand.name, summarizeCommand);
+client.commands.set(summarizeCommand.data.name, summarizeCommand);
+client.commands.set(adminCommand.data.name, adminCommand);
 
 client.once(Events.ClientReady, c => {
   console.log(`Ready! Logged in as ${c.user.tag}`);

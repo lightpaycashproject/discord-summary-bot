@@ -18,6 +18,9 @@ module.exports = {
   summarize: {
     limit: parseInt(process.env.SUMMARIZE_LIMIT) || 100,
   },
+  admin: {
+    userId: process.env.ADMIN_USER_ID,
+  },
   database: {
     path: process.env.NODE_ENV === 'test' ? ':memory:' : (process.env.DATABASE_PATH || 'database.sqlite'),
   },

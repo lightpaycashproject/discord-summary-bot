@@ -79,6 +79,26 @@ class DatabaseService {
     }
   }
 
+  clearChannelCache(channelId) {
+    if (typeof Bun !== 'undefined') {
+      this.db.query('DELETE FROM summaries WHERE channel_id = $channelId').run({ $channelId: channelId });
+    } else {
+      this.db.prepare('DELETE FROM summaries WHERE channel_id = ?').run(channelId);
+    }
+  }
+
+  getStats() {
+    let tweets, summaries;
+    if (typeof Bun !== 'undefined') {
+      tweets = this.db.query('SELECT COUNT(*) as count FROM scraped_data').get().count;
+      summaries = this.db.query('SELECT COUNT(*) as count FROM summaries').get().count;
+    } else {
+      tweets = this.db.prepare('SELECT COUNT(*) as count FROM scraped_data').get().count;
+      summaries = this.db.prepare('SELECT COUNT(*) as count FROM summaries').get().count;
+    }
+    return { tweets, summaries };
+  }
+
   close() {
     this.db.close();
   }

@@ -9,6 +9,11 @@ A Discord bot that summarizes conversations in a text channel using AI (NVIDIA A
 - **Direct Message Delivery**: The summary is sent directly to your DMs to avoid cluttering the channel.
 - **Smart Caching**: Local SQLite database caches X.com scraping results and generated summaries. If the conversation hasn't changed, the bot serves the cached summary to save API tokens.
 - **24-Hour Window**: Automatically fetches and summarizes the last 24 hours of conversation history.
+- **Crypto & Alpha Focused**: Optimized prompt to identify projects, alpha, and crypto signals in the conversation.
+- **User Contributions**: Lists what each significant participant contributed to the discussion.
+- **Multi-Server Support**: Works across any number of Discord servers.
+- **Admin Commands**: Special commands for bot administrators (stats, cache management).
+- **CI/CD**: Fully automated GitHub Actions workflow with linting and coverage checks.
 
 ## Prerequisites
 
@@ -59,7 +64,11 @@ A Discord bot that summarizes conversations in a text channel using AI (NVIDIA A
     npm test
     ```
 - **Linting**:
-    Ensure code quality with ESLint (not configured by default but recommended).
+    ```bash
+    npm run lint
+    ```
+- **CI/CD**:
+    The repository includes a GitHub Actions workflow that automatically runs linting and tests on every push. It also integrates with Codecov for coverage tracking.
 
 ## Architecture
 
