@@ -1,7 +1,9 @@
-const ScraperService = require('../src/services/ScraperService');
 const axios = require('axios');
 
-jest.mock('axios');
+// Manually mock axios for Bun/Jest compatibility
+axios.get = jest.fn();
+
+const ScraperService = require('../src/services/ScraperService');
 
 describe('ScraperService', () => {
   beforeEach(() => {
@@ -20,7 +22,7 @@ describe('ScraperService', () => {
       quote: null,
       replying_to_status: null
     };
-    axios.get.mockResolvedValueOnce({ data: { tweet: mockTweet } });
+    axios.get.mockImplementation(() => Promise.resolve({ data: { tweet: mockTweet } }));
 
     const content = await ScraperService.scrapeTweet('https://x.com/user/status/123');
     
@@ -38,7 +40,7 @@ describe('ScraperService', () => {
       },
       replying_to_status: null
     };
-    axios.get.mockResolvedValueOnce({ data: { tweet: mockTweet } });
+    axios.get.mockImplementation(() => Promise.resolve({ data: { tweet: mockTweet } }));
 
     const content = await ScraperService.scrapeTweet('https://x.com/user/status/123');
     expect(content).toContain('@userA: Check this out');
@@ -58,8 +60,8 @@ describe('ScraperService', () => {
     };
 
     axios.get
-      .mockResolvedValueOnce({ data: { tweet: tweet2 } })
-      .mockResolvedValueOnce({ data: { tweet: tweet1 } });
+      .mockImplementationOnce(() => Promise.resolve({ data: { tweet: tweet2 } }))
+      .mockImplementationOnce(() => Promise.resolve({ data: { tweet: tweet1 } }));
 
     const content = await ScraperService.scrapeTweet('https://x.com/user/status/222');
     
@@ -74,13 +76,13 @@ describe('ScraperService', () => {
   });
 
   it('should handle API failures gracefully (empty thread)', async () => {
-    axios.get.mockRejectedValue(new Error('Network error'));
+    axios.get.mockImplementation(() => Promise.reject(new Error('Network error')));
     const result = await ScraperService.scrapeTweet('https://x.com/user/status/123');
     expect(result).toContain('Could not fetch tweet content');
   });
 
   it('should handle API returning no tweet data', async () => {
-    axios.get.mockResolvedValueOnce({ data: {} });
+    axios.get.mockImplementation(() => Promise.resolve({ data: {} }));
     const result = await ScraperService.scrapeTweet('https://x.com/user/status/123');
     expect(result).toContain('Could not fetch tweet content');
   });
@@ -93,9 +95,7 @@ describe('ScraperService', () => {
     });
 
     // Mock many tweets
-    for (let i = 0; i < 15; i++) {
-      axios.get.mockResolvedValueOnce({ data: { tweet: mockTweet(i, 'parent') } });
-    }
+    axios.get.mockImplementation(() => Promise.resolve({ data: { tweet: mockTweet('n', 'parent') } }));
 
     const content = await ScraperService.scrapeTweet('https://x.com/user/status/111');
     const tweets = content.split('\n---\n');
@@ -103,7 +103,7 @@ describe('ScraperService', () => {
   });
 
   it('should handle fatal errors in scrapeTweet', async () => {
-    const spy = jest.spyOn(ScraperService, 'fetchThread').mockRejectedValueOnce(new Error('Fatal'));
+    const spy = jest.spyOn(ScraperService, 'fetchThread').mockImplementation(() => Promise.reject(new Error('Fatal')));
     const result = await ScraperService.scrapeTweet('https://x.com/user/status/123');
     expect(result).toContain('Error fetching tweet: Fatal');
     spy.mockRestore();

@@ -1,27 +1,20 @@
-const SummarizerService = require('../src/services/SummarizerService');
-const { OpenRouter } = require('@openrouter/sdk');
-
-// Mock OpenRouter SDK
+// Mock OpenRouter SDK BEFORE requiring the service
+const mockSend = jest.fn();
 jest.mock('@openrouter/sdk', () => {
   return {
     OpenRouter: jest.fn().mockImplementation(() => {
       return {
         chat: {
-          send: jest.fn()
+          send: mockSend
         }
       };
     })
   };
 });
 
+const SummarizerService = require('../src/services/SummarizerService');
+
 describe('SummarizerService', () => {
-  let mockOpenRouterInstance;
-
-  beforeEach(() => {
-    // Get the instance created in the service
-    mockOpenRouterInstance = SummarizerService.openRouter;
-  });
-
   afterEach(() => {
     jest.clearAllMocks();
   });
@@ -32,11 +25,11 @@ describe('SummarizerService', () => {
         { message: { content: 'This is a summary.' } }
       ]
     };
-    mockOpenRouterInstance.chat.send.mockResolvedValue(mockResponse);
+    mockSend.mockResolvedValue(mockResponse);
 
     const summary = await SummarizerService.summarize('Chat content');
     
-    expect(mockOpenRouterInstance.chat.send).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
       model: expect.any(String),
       messages: expect.arrayContaining([
         expect.objectContaining({ role: 'user', content: expect.stringContaining('Chat content') })
@@ -46,7 +39,7 @@ describe('SummarizerService', () => {
   });
 
   it('should handle API errors gracefully', async () => {
-    mockOpenRouterInstance.chat.send.mockRejectedValue(new Error('SDK Error'));
+    mockSend.mockRejectedValue(new Error('SDK Error'));
     const summary = await SummarizerService.summarize('content');
     expect(summary).toBe('Failed to generate summary due to an API error.');
   });
@@ -57,7 +50,7 @@ describe('SummarizerService', () => {
   });
 
   it('should handle invalid SDK response gracefully', async () => {
-    mockOpenRouterInstance.chat.send.mockResolvedValue({}); // Empty response
+    mockSend.mockResolvedValue({}); // Empty response
     const summary = await SummarizerService.summarize('content');
     expect(summary).toBe('Failed to generate summary due to an API error.');
   });
